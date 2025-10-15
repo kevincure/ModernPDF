@@ -5,6 +5,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Lightweight PDF Viewer + Annotator</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-y8ng0mYEbNUN81cUfJoi2QdZV/5z725LLJoPLt114F8nGZ4PlzyBbs6k8ZZrVSu2Ce279b9Ec/WWEDuJePfMwA==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
 <!-- pdf.js & pdf-lib -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
@@ -31,18 +32,19 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 }
 .reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);transition:opacity .2s ease,transform .25s ease;}
 .toolbar-sep{grid-column:1/span 2;height:16px}
-.span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center}
+.span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;width:100%}
 .nav-btn.needs-file{background:#2563eb;color:#fff;box-shadow:0 4px 10px rgba(37,99,235,.4)}
 .hamburger-btn,.icon-btn,.nav-btn{
   background:rgba(255,255,255,0.9);
   border:1px solid var(--border-color);
   cursor:pointer;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,.1);
-  transition:all .2s;width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1.5rem;
+  transition:all .2s;width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1rem;
 }
+.nav-btn.span-2{width:100%;}
 .hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#fff;box-shadow:0 4px 8px rgba(0,0,0,.15)}
 .nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 8px rgba(37,99,235,.35);}
-.icon-btn svg{stroke:currentColor;width:20px;height:20px}
-#toggleReaderBtn svg{margin:0 auto}
+.icon-btn i{pointer-events:none;font-size:1.3em;line-height:1;}
+#toggleReaderBtn i{margin:0 auto;}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Tiny info pill */
 .nav-info{background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;text-align:center;font-size:.85rem;font-family:var(--font-sans);color:#666;font-weight:500}
@@ -126,9 +128,11 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .toggle-row{display:flex;gap:6px;align-items:center}
 .mini-btn{
   width:28px;height:28px;border-radius:6px;border:1px solid var(--border-color);
-  background:#f5f5f5;cursor:pointer;font-weight:700;font-family:var(--font-sans);
+  background:#f5f5f5;cursor:pointer;font-weight:600;font-family:var(--font-sans);
+  display:flex;align-items:center;justify-content:center;font-size:.9rem;line-height:1;
 }
 .mini-btn.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.mini-btn i{pointer-events:none;}
 .color-row{display:flex;align-items:center;gap:6px;font-size:.75rem;color:#333}
 
 .signature-modal{
@@ -144,7 +148,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .signature-label{font-size:.85rem;color:#555}
 .signature-card canvas{width:100%;height:auto;border:1px solid #d4d4d4;border-radius:8px;background:#fff;cursor:crosshair;touch-action:none}
 .signature-actions{display:flex;gap:10px;justify-content:space-between}
-.signature-actions .nav-btn{width:auto;height:38px;font-size:.95rem;padding:0 16px;line-height:1;box-shadow:none}
+.signature-actions .nav-btn{width:auto;height:36px;font-size:.85rem;padding:0 16px;line-height:1;box-shadow:none}
 .signature-actions .nav-btn.primary-btn{box-shadow:none}
 .signature-hint{font-size:.75rem;color:#555;text-align:left}
 .cs-author-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-family:var(--font-sans);font-size:.85rem;color:#444}
@@ -158,60 +162,48 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
   <div class="header" id="leftBar">
     <!-- Open/Save -->
     <button class="nav-btn icon-btn" id="openBtn" title="Open PDF">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
+      <i class="fa-solid fa-folder-open"></i>
     </button>
     <input id="file" type="file" accept="application/pdf"/>
     <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF (with comments/text/signatures)" disabled>
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
+      <i class="fa-solid fa-floppy-disk"></i>
     </button>
     <div class="toolbar-sep" aria-hidden="true"></div>
     <button class="nav-btn icon-btn" id="identityBtn" title="Set name & signature">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5.5 20a4.5 4.5 0 0 1 13 0"/><circle cx="12" cy="7" r="4"/>
-      </svg>
+      <i class="fa-solid fa-user"></i>
     </button>
     <button class="nav-btn icon-btn" id="textTool" title="Add text (T – one time)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20V7"/><path d="M15 20V7"/></svg>
+      <i class="fa-solid fa-font"></i>
     </button>
     <button class="nav-btn icon-btn" id="commentTool" title="Add comment (M – one time)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+      <i class="fa-solid fa-comment-dots"></i>
     </button>
     <button class="nav-btn icon-btn" id="signatureTool" title="Add signature (S – one time)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17c3-3 6 0 9-3s6 0 9-3"/></svg>
+      <i class="fa-solid fa-pen-fancy"></i>
     </button>
     <div class="toolbar-sep" aria-hidden="true"></div>
-    <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)">−</button>
-    <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)">+</button>
+    <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)">
+      <i class="fa-solid fa-magnifying-glass-minus"></i>
+    </button>
+    <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)">
+      <i class="fa-solid fa-magnifying-glass-plus"></i>
+    </button>
     <div id="pageInfo" class="nav-info">1 / 1 · 100%</div>
     <button class="nav-btn icon-btn" id="prevPageBtn" title="Previous page (←)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="15 18 9 12 15 6"/>
-      </svg>
+      <i class="fa-solid fa-arrow-left"></i>
     </button>
     <button class="nav-btn icon-btn" id="nextPageBtn" title="Next page (→)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
+      <i class="fa-solid fa-arrow-right"></i>
     </button>
     <div class="toolbar-sep" aria-hidden="true"></div>
     <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 7h18M3 17h18"/><path d="M8 12h8"/><path d="M4 12l-2-2 2-2"/><path d="M20 12l2-2-2-2"/>
-      </svg>
+      <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
     </button>
     <button class="nav-btn icon-btn" id="toggleSpreadBtn" title="One/Two page view">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/>
-      </svg>
+      <i class="fa-solid fa-columns"></i>
     </button>
     <button class="nav-btn icon-btn span-2" id="toggleReaderBtn" title="Full screen reading (F)">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M8 3H3v5M21 8V3h-5M16 21h5v-5M3 16v5h5"/>
-      </svg>
+      <i class="fa-solid fa-maximize"></i>
     </button>
   </div>
 
@@ -227,13 +219,15 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 <aside id="commentSidebar">
   <div class="cs-header">
     <span id="csTitle">Comments</span>
-    <button class="nav-btn icon-btn" id="csClose" title="Close">×</button>
+    <button class="nav-btn icon-btn" id="csClose" title="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
   </div>
   <div class="cs-thread" id="csThread"></div>
   <div class="cs-input">
     <div class="cs-author-line">
       <span>Commenting as <strong id="csAuthorName">Guest</strong></span>
-      <button class="mini-btn" id="csIdentityBtn" title="Edit name or signature">👤</button>
+      <button class="mini-btn" id="csIdentityBtn" title="Edit name or signature"><i class="fa-solid fa-user-pen"></i></button>
     </div>
     <textarea id="csText" placeholder="Write a comment..."></textarea>
     <div class="cs-actions">
@@ -273,7 +267,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
   <div class="signature-card">
     <header>
       <h2>Your identity</h2>
-      <button id="identityClose" class="mini-btn" title="Close">×</button>
+      <button id="identityClose" class="mini-btn" title="Close"><i class="fa-solid fa-xmark"></i></button>
     </header>
     <label class="identity-field">
       <span>Name</span>
@@ -300,6 +294,7 @@ const ZOOMS = [0.25,0.5,0.75,0.9,1,1.1,1.25,1.5,1.75,2];
 let fitWidthMode = false;
 let readerMode = false;
 let spread2 = false;
+let readerPrevScale = 1;
 let currentPageIndex = 0; // 0-based for paging in reader
 let dpr = window.devicePixelRatio || 1;
 let signatureDataUrl = null;
@@ -308,6 +303,7 @@ let openCommentTarget = null; // {pageNum, anno}
 let userName = localStorage.getItem('userName') || localStorage.getItem('commentAuthor') || '';
 let pendingTool = null;
 let identityHasInk = false;
+let resizeTimer = null;
 
 /* ----------------- DOM ----------------- */
 const el = (id)=>document.getElementById(id);
@@ -359,6 +355,30 @@ function snapIndexFromScale(scale){ // nearest index
   let best=0, diff=1e9;
   for(let i=0;i<ZOOMS.length;i++){ const d=Math.abs(ZOOMS[i]-scale); if(d<diff){diff=d;best=i;}}
   return best;
+}
+function getMainContentSize(){
+  const styles = getComputedStyle(mainEl);
+  const padX = parseFloat(styles.paddingLeft||'0') + parseFloat(styles.paddingRight||'0');
+  const padY = parseFloat(styles.paddingTop||'0') + parseFloat(styles.paddingBottom||'0');
+  const width = Math.max(0, mainEl.clientWidth - padX);
+  const height = Math.max(0, mainEl.clientHeight - padY);
+  return {width, height};
+}
+async function computeReaderFitScale(){
+  if(!pdfDoc) return currentScale;
+  const pageCount = pdfDoc.numPages;
+  const pageNum = clamp(currentPageIndex+1,1,pageCount);
+  const page = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1 });
+  const {width: availW, height: availH} = getMainContentSize();
+  if(availW<=0 || availH<=0) return currentScale;
+  const showingPair = spread2 && (pageNum < pageCount);
+  const spreadGap = showingPair ? 16 : 0;
+  const totalWidth = showingPair ? (viewport.width * 2 + spreadGap) : viewport.width;
+  const scaleX = availW / totalWidth;
+  const scaleY = availH / viewport.height;
+  const fitScale = Math.min(scaleX, scaleY);
+  return clamp(fitScale, ZOOMS[0], ZOOMS[ZOOMS.length-1]);
 }
 function setTool(name){
   currentTool = name;
@@ -446,7 +466,7 @@ async function renderAll(){
   rehydrateAnnotations();
   updatePageInfo();
   updateSpreadClass();
-  if(readerMode) applyReaderLayout();
+  applyReaderLayout();
 }
 
 function rehydrateAnnotations(){
@@ -473,7 +493,7 @@ fileInput.onchange = async (e)=>{
   const loading = pdfjsLib.getDocument({ data: pdfBytes });
   pdfDoc = await loading.promise;
   annotations = {};
-  currentScale = 1; fitWidthMode=false; readerMode=false; spread2=false; currentPageIndex=0;
+  currentScale = 1; fitWidthMode=false; readerMode=false; spread2=false; readerPrevScale = 1; currentPageIndex=0;
   await renderAll();
   setTool('select');
   hideTextToolbar();
@@ -482,7 +502,8 @@ fileInput.onchange = async (e)=>{
 saveBtn.onclick = async ()=>{
   if(!pdfBytes){alert('Open a PDF first.');return;}
   try{
-    const doc = await PDFLib.PDFDocument.load(pdfBytes.slice());
+    const sourceBytes = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
+    const doc = await PDFLib.PDFDocument.load(sourceBytes);
     const helv = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     const helvB = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
     const times = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
@@ -528,8 +549,9 @@ saveBtn.onclick = async ()=>{
       }
     }
     const out = await doc.save();
-    pdfBytes = out;
-    const blob = new Blob([out], {type:'application/pdf'});
+    const outBytes = out instanceof Uint8Array ? out : new Uint8Array(out);
+    pdfBytes = new Uint8Array(outBytes);
+    const blob = new Blob([pdfBytes], {type:'application/pdf'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download='annotated.pdf'; a.click(); URL.revokeObjectURL(url);
   }catch(err){
@@ -632,7 +654,13 @@ function addAnnotationElement(layer, pageNum, anno, opts){
     div.style.fontWeight = anno.styles.fontWeight; div.style.fontStyle=anno.styles.fontStyle; div.style.color = anno.styles.color||'#000';
     div.placeholder = 'Type…';
     div.textContent = anno.content || '';
-    div.oninput = ()=> { anno.content = div.textContent; };
+    div.addEventListener('input',()=>{
+      anno.content = div.textContent;
+      if(document.activeElement===div){
+        showTextToolbar(div, anno);
+        positionTextToolbar(div);
+      }
+    });
     div.addEventListener('focus',()=>showTextToolbar(div, anno));
     div.addEventListener('click',()=>showTextToolbar(div, anno));
     makeDraggable(div, anno, layer);
@@ -775,22 +803,25 @@ function applyReaderLayout(){
     const p2 = clamp(p1+1,1,pc);
     const w1 = pagesEl.querySelector(`.page[data-page="${p1}"]`);
     const w2 = pagesEl.querySelector(`.page[data-page="${p2}"]`);
-    if(w1){ w1.style.display='inline-block'; w1.style.marginRight='8px'; }
+    if(w1){ w1.style.display='inline-block'; w1.style.marginRight='16px'; }
     if(w2){ w2.style.display='inline-block'; }
   }
 }
-function toggleReader(){
-  readerMode = !readerMode;
-  if(readerMode && spread2){
-    currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
-  }
-  applyReaderLayout();
-  updatePageInfo();
-  if(readerMode){
+async function toggleReader(){
+  if(!pdfDoc){ return; }
+  const entering = !readerMode;
+  if(entering){
+    readerPrevScale = currentScale;
+    readerMode = true;
+    fitWidthMode = false;
+    if(spread2){
+      currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+    }
+    const fitScale = await computeReaderFitScale();
+    currentScale = fitScale;
+    await renderAll();
+    mainEl.scrollTop = 0;
     closeCommentUI();
-  }
-  // Fullscreen request/exit
-  if(readerMode){
     if(document.fullscreenElement==null){
       const req = document.documentElement.requestFullscreen;
       if(typeof req==='function'){
@@ -798,26 +829,40 @@ function toggleReader(){
       }
     }
   }else{
+    readerMode = false;
+    fitWidthMode = false;
+    if(spread2){
+      updateSpreadClass();
+    }
+    currentScale = readerPrevScale || currentScale;
+    await renderAll();
+    mainEl.scrollTop = 0;
     if(document.fullscreenElement && typeof document.exitFullscreen==='function'){
       document.exitFullscreen().catch?.(()=>{});
     }
   }
-  updateSpreadClass();
+  updatePageInfo();
   updateToolbarStates();
 }
-toggleReaderBtn.onclick = toggleReader;
-toggleSpreadBtn.onclick = ()=>{
-  spread2 = !spread2;
-  if(readerMode){
-    if(spread2){
-      currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+if(toggleReaderBtn){ toggleReaderBtn.addEventListener('click',()=>{ toggleReader(); }); }
+if(toggleSpreadBtn){
+  toggleSpreadBtn.addEventListener('click', async ()=>{
+    spread2 = !spread2;
+    if(readerMode){
+      if(spread2){
+        currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+      }
+      const scale = await computeReaderFitScale();
+      currentScale = scale;
+      await renderAll();
+      mainEl.scrollTop = 0;
+    }else{
+      updateSpreadClass();
     }
-    applyReaderLayout();
-  }
-  updateSpreadClass();
-  updateToolbarStates();
-  updatePageInfo();
-};
+    updateToolbarStates();
+    updatePageInfo();
+  });
+}
 
 /* Page navigation */
 function goToPage(delta){
@@ -829,6 +874,7 @@ function goToPage(delta){
   }
   if(readerMode){
     applyReaderLayout();
+    mainEl.scrollTop = 0;
   }else{
     const target = pagesEl.querySelector(`.page[data-page="${currentPageIndex+1}"]`);
     if(target){
@@ -957,6 +1003,27 @@ document.addEventListener('click',(e)=>{
 
 window.addEventListener('scroll',()=>{
   if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
+});
+if(mainEl){
+  mainEl.addEventListener('scroll',()=>{
+    if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
+  });
+}
+
+window.addEventListener('resize',()=>{
+  dpr = window.devicePixelRatio || 1;
+  if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
+  if(resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(async ()=>{
+    if(readerMode && pdfDoc){
+      const scale = await computeReaderFitScale();
+      currentScale = scale;
+      await renderAll();
+      mainEl.scrollTop = 0;
+      updatePageInfo();
+      updateToolbarStates();
+    }
+  }, 120);
 });
 
 /* ----------------- Signature modal ----------------- */
