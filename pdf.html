@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Annotator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: #2b2b2b;
+            color: #fff;
+        }
+        #toolbar {
+            background: #1a1a1a;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid #444;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #0052a3; }
+        button.active { 
+            background: #00aa00;
+            box-shadow: 0 0 8px rgba(0, 170, 0, 0.5);
+        }
+        button:disabled { background: #555; cursor: not-allowed; }
+        #fileInput { display: none; }
+        .toolbar-group {
+            display: flex;
+            gap: 5px;
+            padding: 0 10px;
+            border-left: 1px solid #444;
+        }
+        .toolbar-group:first-child { border-left: none; }
+        .toolbar-group.text-formatting {
+            display: none;
+        }
+        .toolbar-group.text-formatting.visible {
+            display: flex;
+        }
+        select {
+            padding: 8px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #container {
+            position: relative;
+            overflow: auto;
+            height: calc(100vh - 61px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .page-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: block;
+            background: white;
+        }
+        .annotation-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: all;
+        }
+        .annotation-layer.clickable {
+            cursor: crosshair;
+        }
+        .text-annotation, .signature, .comment-marker {
+            position: absolute;
+            pointer-events: all;
+            cursor: move;
+        }
+        .text-annotation {
+            background: rgba(255, 255, 0, 0.3);
+            border: 1px solid #ffcc00;
+            padding: 4px;
+            min-width: 100px;
+            min-height: 24px;
+            outline: none;
+        }
+        .text-annotation:focus {
+            outline: 2px solid #0066cc;
+            background: rgba(255, 255, 0, 0.5);
+        }
+        .text-annotation.selected {
+            outline: 2px solid #ff6600;
+        }
+        .signature {
+            border: 2px dashed #0066cc;
+            background: rgba(0, 102, 204, 0.1);
+        }
+        .signature.selected {
+            border-color: #ff6600;
+        }
+        .signature img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .comment-marker {
+            width: 24px;
+            height: 24px;
+            background: #ffcc00;
+            border: 2px solid #ff9900;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+        }
+        .comment-marker:hover {
+            background: #ffdd00;
+        }
+        .comment-popup {
+            position: absolute;
+            background: white;
+            border: 2px solid #ff9900;
+            border-radius: 8px;
+            padding: 0;
+            width: 300px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 100;
+            color: #333;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .comment-header {
+            background: #ff9900;
+            color: white;
+            padding: 10px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .comment-close {
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+        }
+        .comment-thread {
+            padding: 10px;
+        }
+        .comment-item {
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+        }
+        .comment-item:last-child {
+            border-bottom: none;
+        }
+        .comment-author {
+            font-weight: bold;
+            font-size: 12px;
+            color: #0066cc;
+            margin-bottom: 4px;
+        }
+        .comment-text {
+            font-size: 14px;
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+        }
+        .comment-time {
+            font-size: 11px;
+            color: #666;
+        }
+        .comment-input-area {
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+        .comment-input-area textarea {
+            width: 100%;
+            min-height: 60px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .comment-input-area input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .comment-popup-buttons {
+            margin-top: 8px;
+            display: flex;
+            gap: 5px;
+        }
+        .comment-popup button {
+            padding: 6px 12px;
+            font-size: 12px;
+            flex: 1;
+        }
+        #signatureModal, #nameModal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            z-index: 1000;
+            color: #333;
+        }
+        #signatureModal.active, #nameModal.active { display: block; }
+        #signatureCanvas {
+            border: 2px solid #333;
+            cursor: crosshair;
+            display: block;
+            margin: 10px 0;
+        }
+        #modalOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 999;
+        }
+        #modalOverlay.active { display: block; }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        #savedSignatures {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        .saved-sig {
+            width: 150px;
+            height: 60px;
+            border: 2px solid #ccc;
+            cursor: pointer;
+            padding: 5px;
+        }
+        .saved-sig:hover { border-color: #0066cc; }
+        .saved-sig img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .delete-btn {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            width: 24px;
+            height: 24px;
+            background: #ff0000;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+            z-index: 10;
+        }
+        .selected .delete-btn {
+            display: flex;
+        }
+        #nameModal input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <div class="toolbar-group">
+            <label for="fileInput">
+                <button onclick="document.getElementById('fileInput').click()">Open PDF</button>
+            </label>
+            <input type="file" id="fileInput" accept="application/pdf">
+            <button id="saveBtn" disabled>Save PDF</button>
+        </div>
+        
+        <div class="toolbar-group">
+            <button id="textMode" title="Click on PDF to add text (Ctrl+T)">Add Text</button>
+            <button id="commentMode" title="Click on PDF to add comment (Ctrl+M)">Add Comment</button>
+            <button id="signatureBtn" title="Add signature (Ctrl+S)">Add Signature</button>
+        </div>
+        
+        <div class="toolbar-group text-formatting" id="textFormatting">
+            <select id="fontFamily">
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Verdana">Verdana</option>
+            </select>
+            <select id="fontSize">
+                <option value="10">10px</option>
+                <option value="12" selected>12px</option>
+                <option value="14">14px</option>
+                <option value="16">16px</option>
+                <option value="18">18px</option>
+                <option value="20">20px</option>
+                <option value="24">24px</option>
+            </select>
+            <button id="boldBtn" title="Bold (Ctrl+B)">B</button>
+            <button id="italicBtn" title="Italic (Ctrl+I)">I</button>
+            <button id="colorBtn" title="Text color">
+                <input type="color" id="textColor" value="#000000" style="width:20px;height:20px;border:none;cursor:pointer;">
+            </button>
+        </div>
+        
+        <div class="toolbar-group">
+            <button id="undoBtn" disabled title="Undo (Ctrl+Z)">↶ Undo</button>
+            <button id="redoBtn" disabled title="Redo (Ctrl+Y)">↷ Redo</button>
+        </div>
+        
+        <div class="toolbar-group">
+            <button id="deleteBtn" disabled title="Delete selected (Delete)">🗑 Delete</button>
+        </div>
+    </div>
+
+    <div id="container"></div>
+
+    <div id="modalOverlay"></div>
+    
+    <div id="signatureModal">
+        <h3 style="margin-bottom: 10px;">Create Signature</h3>
+        <div id="savedSignatures"></div>
+        <canvas id="signatureCanvas" width="400" height="150"></canvas>
+        <div class="modal-buttons">
+            <button id="clearSig">Clear</button>
+            <button id="saveSig">Save Signature</button>
+            <button id="useSig">Use This</button>
+            <button id="cancelSig">Cancel</button>
+        </div>
+    </div>
+
+    <div id="nameModal">
+        <h3 style="margin-bottom: 10px;">Enter Your Name</h3>
+        <p style="margin-bottom: 10px; font-size: 14px;">This will be shown on your comments:</p>
+        <input type="text" id="userName" placeholder="Your name">
+        <div class="modal-buttons">
+            <button id="saveNameBtn">Save</button>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // State management
+        let pdfDoc = null;
+        let pdfBytes = null;
+        let currentMode = null;
+        let annotations = {};
+        let savedSignatures = JSON.parse(localStorage.getItem('signatures') || '[]');
+        let userName = localStorage.getItem('userName') || '';
+        let selectedAnnotation = null;
+        let selectedElement = null;
+        let annotationIdCounter = 0;
+
+        // Command pattern for undo/redo
+        class CommandHistory {
+            constructor() {
+                this.undoStack = [];
+                this.redoStack = [];
+            }
+
+            execute(command) {
+                command.execute();
+                this.undoStack.push(command);
+                this.redoStack = [];
+                this.updateButtons();
+            }
+
+            undo() {
+                if (this.undoStack.length === 0) return;
+                const command = this.undoStack.pop();
+                command.undo();
+                this.redoStack.push(command);
+                this.updateButtons();
+            }
+
+            redo() {
+                if (this.redoStack.length === 0) return;
+                const command = this.redoStack.pop();
+                command.execute();
+                this.undoStack.push(command);
+                this.updateButtons();
+            }
+
+            updateButtons() {
+                document.getElementById('undoBtn').disabled = this.undoStack.length === 0;
+                document.getElementById('redoBtn').disabled = this.redoStack.length === 0;
+            }
+        }
+
+        const commandHistory = new CommandHistory();
+
+        // Commands
+        class AddAnnotationCommand {
+            constructor(pageNum, annotation, element) {
+                this.pageNum = pageNum;
+                this.annotation = annotation;
+                this.element = element;
+            }
+
+            execute() {
+                if (!annotations[this.pageNum]) annotations[this.pageNum] = [];
+                const existing = annotations[this.pageNum].find(a => a.id === this.annotation.id);
+                if (!existing) {
+                    annotations[this.pageNum].push(this.annotation);
+                }
+                if (this.element && this.element.parentElement) {
+                    this.element.style.display = '';
+                }
+            }
+
+            undo() {
+                const index = annotations[this.pageNum].findIndex(a => a.id === this.annotation.id);
+                if (index > -1) {
+                    annotations[this.pageNum].splice(index, 1);
+                }
+                if (this.element) {
+                    this.element.remove();
+                }
+            }
+        }
+
+        class DeleteAnnotationCommand {
+            constructor(pageNum, annotation, element) {
+                this.pageNum = pageNum;
+                this.annotation = annotation;
+                this.element = element;
+            }
+
+            execute() {
+                const index = annotations[this.pageNum].findIndex(a => a.id === this.annotation.id);
+                if (index > -1) {
+                    annotations[this.pageNum].splice(index, 1);
+                }
+                if (this.element) {
+                    this.element.remove();
+                }
+                if (selectedAnnotation && selectedAnnotation.id === this.annotation.id) {
+                    selectedAnnotation = null;
+                    selectedElement = null;
+                    document.getElementById('deleteBtn').disabled = true;
+                }
+            }
+
+            undo() {
+                if (!annotations[this.pageNum]) annotations[this.pageNum] = [];
+                annotations[this.pageNum].push(this.annotation);
+                const pageWrapper = document.querySelector(`[data-page="${this.pageNum}"]`);
+                if (pageWrapper) {
+                    const layer = pageWrapper.querySelector('.annotation-layer');
+                    recreateAnnotationElement(this.pageNum, this.annotation, layer);
+                }
+            }
+        }
+
+        // Signature pad
+        const sigCanvas = document.getElementById('signatureCanvas');
+        const sigCtx = sigCanvas.getContext('2d');
+        let isDrawing = false;
+        let currentSignature = null;
+
+        sigCtx.lineWidth = 2;
+        sigCtx.lineCap = 'round';
+        sigCtx.strokeStyle = '#000';
+
+        function createSignature(pageNum, annotation, layer) {
+            const div = document.createElement('div');
+            div.className = 'signature';
+            div.style.left = annotation.x + 'px';
+            div.style.top = annotation.y + 'px';
+            div.style.width = '200px';
+            div.style.height = '80px';
+            div.dataset.id = annotation.id;
+            
+            const img = document.createElement('img');
+            img.src = annotation.content;
+            div.appendChild(img);
+            
+            div.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('delete-btn')) {
+                    selectAnnotation(annotation, div);
+                }
+            });
+            
+            makeDraggable(div, pageNum, annotation);
+            addDeleteButton(div, pageNum, annotation);
+            layer.appendChild(div);
+            
+            return div;
+        }
+
+        function loadSavedSignatures() {
+            const container = document.getElementById('savedSignatures');
+            container.innerHTML = savedSignatures.map((sig, i) => 
+                `<div class="saved-sig" data-index="${i}"><img src="${sig}"></div>`
+            ).join('');
+            
+            container.querySelectorAll('.saved-sig').forEach(el => {
+                el.onclick = () => {
+                    currentSignature = savedSignatures[el.dataset.index];
+                    closeSignatureModal();
+                    currentMode = 'signature';
+                    updateAnnotationLayerCursors();
+                };
+            });
+        }
+
+        sigCanvas.onmousedown = (e) => {
+            isDrawing = true;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.beginPath();
+            sigCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        };
+
+        sigCanvas.onmousemove = (e) => {
+            if (!isDrawing) return;
+            const rect = sigCanvas.getBoundingClientRect();
+            sigCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            sigCtx.stroke();
+        };
+
+        sigCanvas.onmouseup = () => isDrawing = false;
+        sigCanvas.onmouseleave = () => isDrawing = false;
+
+        document.getElementById('clearSig').onclick = () => {
+            sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        };
+
+        document.getElementById('saveSig').onclick = () => {
+            const dataUrl = sigCanvas.toDataURL();
+            savedSignatures.push(dataUrl);
+            localStorage.setItem('signatures', JSON.stringify(savedSignatures));
+            loadSavedSignatures();
+            alert('Signature saved!');
+        };
+
+        document.getElementById('useSig').onclick = () => {
+            currentSignature = sigCanvas.toDataURL();
+            closeSignatureModal();
+            currentMode = 'signature';
+            updateAnnotationLayerCursors();
+        };
+
+        document.getElementById('cancelSig').onclick = closeSignatureModal;
+        
+        document.getElementById('modalOverlay').onclick = () => {
+            closeSignatureModal();
+            closeNameModal();
+            closeAllCommentPopups();
+        };
+
+        function closeSignatureModal() {
+            document.getElementById('signatureModal').classList.remove('active');
+            document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        function closeNameModal() {
+            document.getElementById('nameModal').classList.remove('active');
+            document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        function closeAllCommentPopups() {
+            document.querySelectorAll('.comment-popup').forEach(p => p.remove());
+        }
+
+        function showNameModal(callback) {
+            document.getElementById('nameModal').classList.add('active');
+            document.getElementById('modalOverlay').classList.add('active');
+            document.getElementById('userName').value = userName;
+            document.getElementById('userName').focus();
+            
+            const saveBtn = document.getElementById('saveNameBtn');
+            const newSaveBtn = saveBtn.cloneNode(true);
+            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+            
+            newSaveBtn.onclick = () => {
+                userName = document.getElementById('userName').value.trim() || 'Anonymous';
+                localStorage.setItem('userName', userName);
+                closeNameModal();
+                if (callback) callback();
+            };
+        }
+
+        // File input
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const arrayBuffer = await file.arrayBuffer();
+            pdfBytes = new Uint8Array(arrayBuffer);
+            
+            const loadingTask = pdfjsLib.getDocument({data: pdfBytes});
+            pdfDoc = await loadingTask.promise;
+            
+            annotations = {};
+            commandHistory.undoStack = [];
+            commandHistory.redoStack = [];
+            commandHistory.updateButtons();
+            
+            renderAllPages();
+            document.getElementById('saveBtn').disabled = false;
+        });
+
+        function updateAnnotationLayerCursors() {
+            document.querySelectorAll('.annotation-layer').forEach(layer => {
+                if (currentMode) {
+                    layer.classList.add('clickable');
+                } else {
+                    layer.classList.remove('clickable');
+                }
+            });
+        }
+
+        async function renderAllPages() {
+            const container = document.getElementById('container');
+            container.innerHTML = '';
+            
+            for (let num = 1; num <= pdfDoc.numPages; num++) {
+                const page = await pdfDoc.getPage(num);
+                const viewport = page.getViewport({scale: 1.5});
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'page-wrapper';
+                wrapper.dataset.page = num;
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                
+                const annotationLayer = document.createElement('div');
+                annotationLayer.className = 'annotation-layer';
+                annotationLayer.style.width = viewport.width + 'px';
+                annotationLayer.style.height = viewport.height + 'px';
+                
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(annotationLayer);
+                container.appendChild(wrapper);
+                
+                const ctx = canvas.getContext('2d');
+                await page.render({canvasContext: ctx, viewport: viewport}).promise;
+                
+                annotationLayer.addEventListener('click', (e) => {
+                    if (e.target !== annotationLayer) return;
+                    
+                    if (currentMode === 'text') {
+                        const annotation = {
+                            id: annotationIdCounter++,
+                            type: 'text',
+                            x: e.offsetX,
+                            y: e.offsetY,
+                            content: '',
+                            styles: getCurrentTextStyles()
+                        };
+                        const element = createTextAnnotation(num, annotation, annotationLayer);
+                        commandHistory.execute(new AddAnnotationCommand(num, annotation, element));
+                        element.focus();
+                    } else if (currentMode === 'comment') {
+                        if (!userName) {
+                            showNameModal(() => {
+                                addCommentAtPosition(num, e.offsetX, e.offsetY, annotationLayer);
+                            });
+                        } else {
+                            addCommentAtPosition(num, e.offsetX, e.offsetY, annotationLayer);
+                        }
+                    } else if (currentMode === 'signature' && currentSignature) {
+                        const annotation = {
+                            id: annotationIdCounter++,
+                            type: 'signature',
+                            x: e.offsetX,
+                            y: e.offsetY,
+                            content: currentSignature
+                        };
+                        const element = createSignature(num, annotation, annotationLayer);
+                        commandHistory.execute(new AddAnnotationCommand(num, annotation, element));
+                        currentMode = null;
+                        currentSignature = null;
+                        document.getElementById('signatureBtn').classList.remove('active');
+                        updateAnnotationLayerCursors();
+                    }
+                });
+            }
+            
+            updateAnnotationLayerCursors();
+        }
+
+        function addCommentAtPosition(num, x, y, layer) {
+            const annotation = {
+                id: annotationIdCounter++,
+                type: 'comment',
+                x: x,
+                y: y,
+                thread: []
+            };
+            const element = createCommentMarker(num, annotation, layer);
+            commandHistory.execute(new AddAnnotationCommand(num, annotation, element));
+            showCommentPopup(element, annotation, num);
+        }
+
+        function getCurrentTextStyles() {
+            return {
+                fontFamily: document.getElementById('fontFamily').value,
+                fontSize: document.getElementById('fontSize').value + 'px',
+                fontWeight: document.getElementById('boldBtn').classList.contains('active') ? 'bold' : 'normal',
+                fontStyle: document.getElementById('italicBtn').classList.contains('active') ? 'italic' : 'normal',
+                color: document.getElementById('textColor').value
+            };
+        }
+
+        function applyTextStyles(element, styles) {
+            element.style.fontFamily = styles.fontFamily;
+            element.style.fontSize = styles.fontSize;
+            element.style.fontWeight = styles.fontWeight;
+            element.style.fontStyle = styles.fontStyle;
+            element.style.color = styles.color;
+        }
+
+        function createTextAnnotation(pageNum, annotation, layer) {
+            const div = document.createElement('div');
+            div.className = 'text-annotation';
+            div.contentEditable = true;
+            div.textContent = annotation.content;
+            div.style.left = annotation.x + 'px';
+            div.style.top = annotation.y + 'px';
+            div.dataset.id = annotation.id;
+            
+            applyTextStyles(div, annotation.styles);
+            
+            div.addEventListener('input', () => {
+                annotation.content = div.textContent;
+            });
+            
+            div.addEventListener('focus', () => {
+                selectAnnotation(annotation, div);
+                document.getElementById('textFormatting').classList.add('visible');
+            });
+            
+            div.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (document.activeElement.contentEditable !== 'true') {
+                        document.getElementById('textFormatting').classList.remove('visible');
+                    }
+                }, 100);
+            });
+            
+            makeDraggable(div, pageNum, annotation);
+            addDeleteButton(div, pageNum, annotation);
+            layer.appendChild(div);
+            
+            return div;
+        }
+
+        function createCommentMarker(pageNum, annotation, layer) {
+            const marker = document.createElement('div');
+            marker.className = 'comment-marker';
+            marker.textContent = 'C';
+            marker.style.left = annotation.x + 'px';
+            marker.style.top = annotation.y + 'px';
+            marker.dataset.id = annotation.id;
+            marker.title = 'Click to view/edit comment';
+            
+            if (!annotation.thread) annotation.thread = [];
+            
+            marker.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectAnnotation(annotation, marker);
+                showCommentPopup(marker, annotation, pageNum);
+            });
+            
+            makeDraggable(marker, pageNum, annotation);
+            addDeleteButton(marker, pageNum, annotation);
+            layer.appendChild(marker);
+            
+            return marker;
+        }
+
+        function showCommentPopup(marker, annotation, pageNum) {
+            closeAllCommentPopups();
+            
+            const popup = document.createElement('div');
+            popup.className = 'comment-popup';
+            popup.style.left = (parseInt(marker.style.left) + 30) + 'px';
+            popup.style.top = marker.style.top;
+            
+            const header = document.createElement('div');
+            header.className = 'comment-header';
+            header.innerHTML = `
+                <span>Comments</span>
+                <span class="comment-close">×</span>
+            `;
+            header.querySelector('.comment-close').onclick = () => popup.remove();
+            
+            const thread = document.createElement('div');
+            thread.className = 'comment-thread';
+            
+            if (annotation.thread && annotation.thread.length > 0) {
+                annotation.thread.forEach(comment => {
+                    const item = document.createElement('div');
+                    item.className = 'comment-item';
+                    item.innerHTML = `
+                        <div class="comment-author">${comment.author}</div>
+                        <div class="comment-text">${comment.text}</div>
+                        <div class="comment-time">${comment.time}</div>
+                    `;
+                    thread.appendChild(item);
+                });
+            }
+            
+            const inputArea = document.createElement('div');
+            inputArea.className = 'comment-input-area';
+            
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Add a comment...';
+            
+            const buttons = document.createElement('div');
+            buttons.className = 'comment-popup-buttons';
+            
+            const postBtn = document.createElement('button');
+            postBtn.textContent = 'Post';
+            postBtn.onclick = () => {
+                const text = textarea.value.trim();
+                if (!text) return;
+                
+                if (!annotation.thread) annotation.thread = [];
+                
+                const comment = {
+                    author: userName,
+                    text: text,
+                    time: new Date().toLocaleString()
+                };
+                
+                annotation.thread.push(comment);
+                
+                const item = document.createElement('div');
+                item.className = 'comment-item';
+                item.innerHTML = `
+                    <div class="comment-author">${comment.author}</div>
+                    <div class="comment-text">${comment.text}</div>
+                    <div class="comment-time">${comment.time}</div>
+                `;
+                thread.appendChild(item);
+                
+                textarea.value = '';
+                thread.scrollTop = thread.scrollHeight;
+            };
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.background = '#666';
+            closeBtn.onclick = () => popup.remove();
+            
+            buttons.appendChild(postBtn);
+            buttons.appendChild(closeBtn);
+            inputArea.appendChild(textarea);
+            inputArea.appendChild(buttons);
+            
+            popup.appendChild(header);
+            popup.appendChild(thread);
+            popup.appendChild(inputArea);
+            
+            marker.parentElement.appendChild(popup);
+            textarea.focus();
+        }
+
+        function recreateAnnotationElement(pageNum, annotation, layer) {
+            if (annotation.type === 'text') {
+                return createTextAnnotation(pageNum, annotation, layer);
+            } else if (annotation.type === 'comment') {
+                return createCommentMarker(pageNum, annotation, layer);
+            } else if (annotation.type === 'signature') {
+                return createSignature(pageNum, annotation, layer);
+            }
+        }
+
+        function makeDraggable(element, pageNum, annotation) {
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+            
+            element.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('delete-btn')) return;
+                if (element.contentEditable === 'true' && e.target === element) return;
+                
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                initialLeft = parseInt(element.style.left);
+                initialTop = parseInt(element.style.top);
+                e.preventDefault();
+            });
+            
+            const mouseMoveHandler = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const newLeft = initialLeft + dx;
+                const newTop = initialTop + dy;
+                element.style.left = newLeft + 'px';
+                element.style.top = newTop + 'px';
+                annotation.x = newLeft;
+                annotation.y = newTop;
+            };
+            
+            const mouseUpHandler = () => {
+                isDragging = false;
+            };
+            
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+        }
+
+        function addDeleteButton(element, pageNum, annotation) {
+            const deleteBtn = document.createElement('div');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.title = 'Delete';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                commandHistory.execute(new DeleteAnnotationCommand(pageNum, annotation, element));
+            };
+            element.appendChild(deleteBtn);
+        }
+
+        function selectAnnotation(annotation, element) {
+            if (selectedAnnotation === annotation) return;
+            
+            document.querySelectorAll('.text-annotation, .signature, .comment-marker').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            element.classList.add('selected');
+            selectedAnnotation = annotation;
+            selectedElement = element;
+            document.getElementById('deleteBtn').disabled = false;
+        }
+
+        // Mode toggles
+        document.getElementById('textMode').addEventListener('click', (e) => {
+            const wasActive = currentMode === 'text';
+            currentMode = wasActive ? null : 'text';
+            e.target.classList.toggle('active');
+            document.getElementById('commentMode').classList.remove('active');
+            document.getElementById('signatureBtn').classList.remove('active');
+            updateAnnotationLayerCursors();
+        });
+
+        document.getElementById('commentMode').addEventListener('click', (e) => {
+            const wasActive = currentMode === 'comment';
+            currentMode = wasActive ? null : 'comment';
+            e.target.classList.toggle('active');
+            document.getElementById('textMode').classList.remove('active');
+            document.getElementById('signatureBtn').classList.remove('active');
+            updateAnnotationLayerCursors();
+        });
+
+        document.getElementById('signatureBtn').addEventListener('click', (e) => {
+            document.getElementById('signatureModal').classList.add('active');
+            document.getElementById('modalOverlay').classList.add('active');
+            loadSavedSignatures();
+            sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+            e.target.classList.add('active');
+            document.getElementById('textMode').classList.remove('active');
+            document.getElementById('commentMode').classList.remove('active');
+        });
+
+        // Text formatting
+        document.getElementById('boldBtn').addEventListener('click', (e) => {
+            e.target.classList.toggle('active');
+            if (selectedElement && selectedElement.contentEditable === 'true') {
+                const styles = getCurrentTextStyles();
+                selectedElement.style.fontWeight = styles.fontWeight;
+                selectedAnnotation.styles.fontWeight = styles.fontWeight;
+            }
+        });
+
+        document.getElementById('italicBtn').addEventListener('click', (e) => {
+            e.target.classList.toggle('active');
+            if (selectedElement && selectedElement.contentEditable === 'true') {
+                const styles = getCurrentTextStyles();
+                selectedElement.style.fontStyle = styles.fontStyle;
+                selectedAnnotation.styles.fontStyle = styles.fontStyle;
+            }
+        });
+
+        document.getElementById('fontFamily').addEventListener('change', (e) => {
+            if (selectedElement && selectedElement.contentEditable === 'true') {
+                selectedElement.style.fontFamily = e.target.value;
+                selectedAnnotation.styles.fontFamily = e.target.value;
+            }
+        });
+
+        document.getElementById('fontSize').addEventListener('change', (e) => {
+            if (selectedElement && selectedElement.contentEditable === 'true') {
+                selectedElement.style.fontSize = e.target.value + 'px';
+                selectedAnnotation.styles.fontSize = e.target.value + 'px';
+            }
+        });
+
+        document.getElementById('textColor').addEventListener('change', (e) => {
+            if (selectedElement && selectedElement.contentEditable === 'true') {
+                selectedElement.style.color = e.target.value;
+                selectedAnnotation.styles.color = e.target.value;
+            }
+        });
+
+        // Undo/Redo
+        document.getElementById('undoBtn').addEventListener('click', () => {
+            commandHistory.undo();
+        });
+
+        document.getElementById('redoBtn').addEventListener('click', () => {
+            commandHistory.redo();
+        });
+
+        // Delete
+        document.getElementById('deleteBtn').addEventListener('click', () => {
+            if (!selectedAnnotation) return;
+            
+            for (let pageNum in annotations) {
+                const annotation = annotations[pageNum].find(a => a.id === selectedAnnotation.id);
+                if (annotation) {
+                    const element = document.querySelector(`[data-id="${annotation.id}"]`);
+                    commandHistory.execute(new DeleteAnnotationCommand(pageNum, annotation, element));
+                    break;
+                }
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') {
+                    e.preventDefault();
+                    commandHistory.undo();
+                } else if (e.key === 'y') {
+                    e.preventDefault();
+                    commandHistory.redo();
+                } else if (e.key === 't') {
+                    e.preventDefault();
+                    document.getElementById('textMode').click();
+                } else if (e.key === 'm') {
+                    e.preventDefault();
+                    document.getElementById('commentMode').click();
+                } else if (e.key === 's' && !e.shiftKey) {
+                    e.preventDefault();
+                    document.getElementById('signatureBtn').click();
+                } else if (e.key === 'b') {
+                    e.preventDefault();
+                    document.getElementById('boldBtn').click();
+                } else if (e.key === 'i') {
+                    e.preventDefault();
+                    document.getElementById('italicBtn').click();
+                }
+            } else if (e.key === 'Delete' && selectedAnnotation) {
+                e.preventDefault();
+                document.getElementById('deleteBtn').click();
+            } else if (e.key === 'Escape') {
+                currentMode = null;
+                document.querySelectorAll('#toolbar button.active').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                updateAnnotationLayerCursors();
+            }
+        });
+
+        // Save PDF
+        document.getElementById('saveBtn').addEventListener('click', async () => {
+            try {
+                const pdfLibDoc = await PDFLib.PDFDocument.load(pdfBytes);
+                const pages = pdfLibDoc.getPages();
+                
+                const helveticaFont = await pdfLibDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+                const helveticaBoldFont = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                const timesFont = await pdfLibDoc.embedFont(PDFLib.StandardFonts.TimesRoman);
+                const courierFont = await pdfLibDoc.embedFont(PDFLib.StandardFonts.Courier);
+                
+                for (let pageNum in annotations) {
+                    const page = pages[pageNum - 1];
+                    const {height} = page.getSize();
+                    
+                    for (let ann of annotations[pageNum]) {
+                        if (ann.type === 'text' && ann.content) {
+                            let font = helveticaFont;
+                            if (ann.styles.fontFamily.includes('Times')) {
+                                font = timesFont;
+                            } else if (ann.styles.fontFamily.includes('Courier')) {
+                                font = courierFont;
+                            } else if (ann.styles.fontWeight === 'bold') {
+                                font = helveticaBoldFont;
+                            }
+                            
+                            const fontSize = parseInt(ann.styles.fontSize) || 12;
+                            const colorHex = ann.styles.color || '#000000';
+                            const r = parseInt(colorHex.substr(1, 2), 16) / 255;
+                            const g = parseInt(colorHex.substr(3, 2), 16) / 255;
+                            const b = parseInt(colorHex.substr(5, 2), 16) / 255;
+                            
+                            page.drawText(ann.content, {
+                                x: ann.x,
+                                y: height - ann.y - fontSize,
+                                size: fontSize,
+                                font: font,
+                                color: PDFLib.rgb(r, g, b)
+                            });
+                        } else if (ann.type === 'signature' && ann.content) {
+                            const sigImage = await pdfLibDoc.embedPng(ann.content);
+                            page.drawImage(sigImage, {
+                                x: ann.x,
+                                y: height - ann.y - 80,
+                                width: 200,
+                                height: 80
+                            });
+                        } else if (ann.type === 'comment' && ann.thread && ann.thread.length > 0) {
+                            page.drawCircle({
+                                x: ann.x + 12,
+                                y: height - ann.y - 12,
+                                size: 12,
+                                borderColor: PDFLib.rgb(1, 0.6, 0),
+                                borderWidth: 2,
+                                color: PDFLib.rgb(1, 0.8, 0)
+                            });
+                            
+                            page.drawText('C', {
+                                x: ann.x + 8,
+                                y: height - ann.y - 16,
+                                size: 12,
+                                font: helveticaBoldFont,
+                                color: PDFLib.rgb(0.2, 0.2, 0.2)
+                            });
+                            
+                            let yOffset = 0;
+                            ann.thread.forEach((comment, idx) => {
+                                const commentLine = `[${comment.author}]: ${comment.text}`;
+                                const lines = commentLine.match(/.{1,60}/g) || [commentLine];
+                                lines.forEach((line, i) => {
+                                    page.drawText(line, {
+                                        x: ann.x + 30,
+                                        y: height - ann.y - 12 - yOffset,
+                                        size: 9,
+                                        font: helveticaFont,
+                                        color: PDFLib.rgb(0.3, 0.3, 0.3)
+                                    });
+                                    yOffset += 12;
+                                });
+                                yOffset += 4;
+                            });
+                        }
+                    }
+                }
+                
+                const modifiedPdfBytes = await pdfLibDoc.save();
+                const blob = new Blob([modifiedPdfBytes], {type: 'application/pdf'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'annotated.pdf';
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                alert('PDF saved successfully!');
+            } catch (error) {
+                console.error('Error saving PDF:', error);
+                alert('Error saving PDF: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html> 
