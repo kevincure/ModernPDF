@@ -29,8 +29,9 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .header{
   position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,52px);grid-auto-rows:min-content;gap:8px 10px;width:auto;justify-items:center;
 }
+.reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);transition:opacity .2s ease,transform .25s ease;}
 .toolbar-sep{grid-column:1/span 2;height:16px}
-.span-2{grid-column:span 2;justify-self:stretch}
+.span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center}
 .nav-btn.needs-file{background:#2563eb;color:#fff;box-shadow:0 4px 10px rgba(37,99,235,.4)}
 .hamburger-btn,.icon-btn,.nav-btn{
   background:rgba(255,255,255,0.9);
@@ -40,7 +41,8 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 }
 .hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#fff;box-shadow:0 4px 8px rgba(0,0,0,.15)}
 .nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 8px rgba(37,99,235,.35);}
-.icon-btn svg{stroke:currentColor}
+.icon-btn svg{stroke:currentColor;width:20px;height:20px}
+#toggleReaderBtn svg{margin:0 auto}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Tiny info pill */
 .nav-info{background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;text-align:center;font-size:.85rem;font-family:var(--font-sans);color:#666;font-weight:500}
@@ -48,8 +50,9 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 /* ====== Viewer area ====== */
 .app{display:flex;height:100vh;width:100vw}
 .main{flex:1;overflow:auto;padding:24px 24px 48px 84px; /* left pad for toolbar */}
+.reader .main{padding-left:32px}
 #pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px}
-#pages.spread{flex-direction:row;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:16px 32px}
+#pages.spread{display:grid;grid-auto-rows:auto;grid-template-columns:repeat(auto-fit,minmax(0,max-content));justify-content:center;align-items:start;gap:16px 32px}
 #pages.spread .page{margin:0}
 .page{position:relative;box-shadow:0 2px 8px rgba(0,0,0,.1);background:#fff}
 .page canvas{display:block;background:#fff}
@@ -141,6 +144,8 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .signature-label{font-size:.85rem;color:#555}
 .signature-card canvas{width:100%;height:auto;border:1px solid #d4d4d4;border-radius:8px;background:#fff;cursor:crosshair;touch-action:none}
 .signature-actions{display:flex;gap:10px;justify-content:space-between}
+.signature-actions .nav-btn{width:auto;height:38px;font-size:.95rem;padding:0 16px;line-height:1;box-shadow:none}
+.signature-actions .nav-btn.primary-btn{box-shadow:none}
 .signature-hint{font-size:.75rem;color:#555;text-align:left}
 .cs-author-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-family:var(--font-sans);font-size:.85rem;color:#444}
 .cs-author-line strong{color:#2563eb}
@@ -286,7 +291,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 
 <script>
 /* ----------------- State ----------------- */
-let pdfDoc=null, pdfBytes=null, pdfArrayBuffer=null;
+let pdfDoc=null, pdfBytes=null;
 let pages = []; // {num, viewportWidth, viewportHeight, canvas, ctx, layer}
 let annotations = {}; // {pageNum: [ {id,type,x,y,content/styles/thread} ]}
 let currentTool = 'select'; // select | textOnce | commentOnce | signatureOnce
@@ -380,7 +385,12 @@ function updatePageInfo(){
   const pct = Math.round(currentScale*100);
   const pageCount = pdfDoc? pdfDoc.numPages : 1;
   const pageNum = clamp(currentPageIndex+1,1,pageCount);
-  pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
+  if(readerMode && spread2 && pageCount>1){
+    const second = Math.min(pageNum+1, pageCount);
+    pageInfo.textContent = `${pageNum}-${second} / ${pageCount} · ${pct}%`;
+  }else{
+    pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
+  }
 }
 function inchToPx(v){return v*96;}
 function toRgb(hex){const r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,b=parseInt(hex.substr(5,2),16)/255;return {r,g,b};}
@@ -429,12 +439,29 @@ async function renderPage(num){
 }
 async function renderAll(){
   if(!pdfDoc) return;
-  const keep = anchorScrollBefore();
+  const keep = readerMode ? 0 : anchorScrollBefore();
   pagesEl.innerHTML=''; pages.length=0;
   for(let i=1;i<=pdfDoc.numPages;i++) await renderPage(i);
-  restoreScroll(keep);
+  if(!readerMode) restoreScroll(keep);
+  rehydrateAnnotations();
   updatePageInfo();
   updateSpreadClass();
+  if(readerMode) applyReaderLayout();
+}
+
+function rehydrateAnnotations(){
+  if(!annotations) return;
+  for(const key of Object.keys(annotations)){
+    const pageNum = parseInt(key,10);
+    if(Number.isNaN(pageNum)) continue;
+    const list = annotations[key];
+    if(!Array.isArray(list) || !list.length) continue;
+    const slot = pages[pageNum-1];
+    if(!slot || !slot.layer) continue;
+    for(const anno of list){
+      addAnnotationElement(slot.layer, pageNum, anno, {addToState:false});
+    }
+  }
 }
 
 /* ----------------- Events: open/save ----------------- */
@@ -442,7 +469,6 @@ openBtn.onclick = ()=>fileInput.click();
 fileInput.onchange = async (e)=>{
   const f=e.target.files[0]; if(!f) return;
   const buf = await f.arrayBuffer();
-  pdfArrayBuffer = buf;
   pdfBytes = new Uint8Array(buf);
   const loading = pdfjsLib.getDocument({ data: pdfBytes });
   pdfDoc = await loading.promise;
@@ -454,10 +480,9 @@ fileInput.onchange = async (e)=>{
   updateToolbarStates();
 };
 saveBtn.onclick = async ()=>{
-  if(!pdfBytes && !pdfArrayBuffer){alert('Open a PDF first.');return;}
+  if(!pdfBytes){alert('Open a PDF first.');return;}
   try{
-    const source = pdfArrayBuffer ? new Uint8Array(pdfArrayBuffer) : pdfBytes;
-    const doc = await PDFLib.PDFDocument.load(source);
+    const doc = await PDFLib.PDFDocument.load(pdfBytes.slice());
     const helv = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     const helvB = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
     const times = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
@@ -503,8 +528,7 @@ saveBtn.onclick = async ()=>{
       }
     }
     const out = await doc.save();
-    pdfBytes = out.slice();
-    pdfArrayBuffer = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+    pdfBytes = out;
     const blob = new Blob([out], {type:'application/pdf'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download='annotated.pdf'; a.click(); URL.revokeObjectURL(url);
@@ -578,23 +602,25 @@ function attachLayerEvents(layer, pageNum){
     const x = e.clientX - rect.left; const y = e.clientY - rect.top;
     if(currentTool==='textOnce'){
       const anno = { id: nextAnnoId++, type:'text', x, y, content:'', styles:{fontFamily:'Helvetica',fontSize:'12',fontWeight:'normal',fontStyle:'normal',color:'#000000'} };
-      addAnnotationElement(layer, pageNum, anno, true);
+      addAnnotationElement(layer, pageNum, anno, {addToState:true, focus:true});
       setTool('select'); // one-shot
     } else if(currentTool==='commentOnce'){
       const anno = { id: nextAnnoId++, type:'comment', x, y, thread:[] };
-      addAnnotationElement(layer, pageNum, anno, true);
+      addAnnotationElement(layer, pageNum, anno, {addToState:true});
       openCommentUI(pageNum, anno);
       setTool('select');
     } else if(currentTool==='signatureOnce' && signatureDataUrl){
       const anno = { id: nextAnnoId++, type:'signature', x, y, w:200, h:80, dataUrl: signatureDataUrl };
-      addAnnotationElement(layer, pageNum, anno, true);
+      addAnnotationElement(layer, pageNum, anno, {addToState:true});
       setTool('select');
     }
   });
 }
 
 /* Create DOM for annotation & register */
-function addAnnotationElement(layer, pageNum, anno, addToState){
+function addAnnotationElement(layer, pageNum, anno, opts){
+  const options = typeof opts==='boolean' ? {addToState: opts} : (opts || {});
+  const { addToState=false, focus=false } = options;
   if(addToState){
     if(!annotations[pageNum]) annotations[pageNum]=[];
     annotations[pageNum].push(anno);
@@ -605,13 +631,16 @@ function addAnnotationElement(layer, pageNum, anno, addToState){
     div.style.fontFamily = anno.styles.fontFamily; div.style.fontSize = (parseInt(anno.styles.fontSize,10)||12)+'px';
     div.style.fontWeight = anno.styles.fontWeight; div.style.fontStyle=anno.styles.fontStyle; div.style.color = anno.styles.color||'#000';
     div.placeholder = 'Type…';
+    div.textContent = anno.content || '';
     div.oninput = ()=> { anno.content = div.textContent; };
     div.addEventListener('focus',()=>showTextToolbar(div, anno));
     div.addEventListener('click',()=>showTextToolbar(div, anno));
     makeDraggable(div, anno, layer);
     layer.appendChild(div);
-    div.focus();
-    showTextToolbar(div, anno);
+    if(focus){
+      div.focus();
+      showTextToolbar(div, anno);
+    }
   } else if(anno.type==='comment'){
     const pin = document.createElement('div'); pin.className='comment-pin'; pin.textContent='C'; pin.dataset.id=anno.id;
     pin.style.left = (anno.x-11)+'px'; pin.style.top=(anno.y-11)+'px';
@@ -691,9 +720,10 @@ if(cs.identityBtn){
 
 /* Close sidebar when clicking outside */
 document.addEventListener('click',(e)=>{
-  if(!cs.panel.contains(e.target) && !e.target.classList.contains('comment-pin')){
-    // Do nothing; user previously wanted close-on-click, but here we keep it manual to avoid instant-close.
-  }
+  if(!cs.panel.classList.contains('open')) return;
+  if(cs.panel.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('.comment-pin')) return;
+  closeCommentUI();
 }, true);
 
 /* ----------------- Zoom & layout ----------------- */
@@ -728,11 +758,11 @@ function applyReaderLayout(){
   document.body.classList.toggle('reader', readerMode);
   // In reader mode, show only the current page (or pair), hide others
   const pc = pdfDoc ? pdfDoc.numPages : 0;
-  pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='none'; });
+  pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='none'; wrap.style.marginRight=''; });
   if(!pdfDoc) return;
   if(!readerMode){
     // show all
-    pagesEl.querySelectorAll('.page').forEach((wrap)=> wrap.style.display='block');
+    pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='block'; wrap.style.marginRight=''; });
     return;
   }
   if(!spread2){
@@ -751,15 +781,26 @@ function applyReaderLayout(){
 }
 function toggleReader(){
   readerMode = !readerMode;
+  if(readerMode && spread2){
+    currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+  }
   applyReaderLayout();
   updatePageInfo();
+  if(readerMode){
+    closeCommentUI();
+  }
   // Fullscreen request/exit
   if(readerMode){
     if(document.fullscreenElement==null){
-      (document.documentElement.requestFullscreen && document.documentElement.requestFullscreen());
+      const req = document.documentElement.requestFullscreen;
+      if(typeof req==='function'){
+        Promise.resolve(req.call(document.documentElement)).catch(()=>{});
+      }
     }
   }else{
-    if(document.fullscreenElement) document.exitFullscreen();
+    if(document.fullscreenElement && typeof document.exitFullscreen==='function'){
+      document.exitFullscreen().catch?.(()=>{});
+    }
   }
   updateSpreadClass();
   updateToolbarStates();
@@ -768,16 +809,24 @@ toggleReaderBtn.onclick = toggleReader;
 toggleSpreadBtn.onclick = ()=>{
   spread2 = !spread2;
   if(readerMode){
+    if(spread2){
+      currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+    }
     applyReaderLayout();
   }
   updateSpreadClass();
   updateToolbarStates();
+  updatePageInfo();
 };
 
 /* Page navigation */
 function goToPage(delta){
   if(!pdfDoc) return;
-  currentPageIndex = clamp(currentPageIndex+delta,0,pdfDoc.numPages-1);
+  const step = (readerMode && spread2) ? delta*2 : delta;
+  currentPageIndex = clamp(currentPageIndex+step,0,pdfDoc.numPages-1);
+  if(readerMode && spread2){
+    currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
+  }
   if(readerMode){
     applyReaderLayout();
   }else{
@@ -984,7 +1033,6 @@ updateToolbarStates();
   const src = u.searchParams.get('src');
   if(!src) return;
   fetch(src).then(r=>r.arrayBuffer()).then(async(buf)=>{
-    pdfArrayBuffer = buf;
     pdfBytes = new Uint8Array(buf);
     const loading = pdfjsLib.getDocument({ data: pdfBytes });
     pdfDoc = await loading.promise;
