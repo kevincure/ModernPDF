@@ -8,6 +8,7 @@
 <!-- pdf.js & pdf-lib -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
   const pdfjsLib = window['pdfjs-dist/build/pdf']; // v3 UMD global
   // (With the worker <script> present, you don’t have to set workerSrc.)
@@ -26,7 +27,7 @@
 body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-color);min-height:100vh;overflow:hidden}
 /* Left header column */
 .header{
-  position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:flex;flex-direction:column;gap:8px;width:auto;
+  position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,52px);gap:8px 10px;width:auto;justify-items:center;
 }
 .hamburger-btn,.icon-btn,.nav-btn{
   background:rgba(255,255,255,0.9);
@@ -35,6 +36,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
   transition:all .2s;width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1.5rem;
 }
 .hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#fff;box-shadow:0 4px 8px rgba(0,0,0,.15)}
+.nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 8px rgba(37,99,235,.35);}
 .icon-btn svg{stroke:currentColor}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Tiny info pill */
@@ -79,14 +81,53 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 
 /* Page indicator pill */
 #pageInfo{background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:14px;padding:4px 8px;font-size:.75rem;font-family:var(--font-sans);color:#666}
+#leftBar #pageInfo{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;height:44px;}
 
 /* Hidden file input */
 #file{display:none}
 
 @media (max-width: 800px){
   .main{padding-left:72px}
+  .header{grid-template-columns:repeat(2,46px);}
   .hamburger-btn,.icon-btn,.nav-btn{width:38px;height:38px}
 }
+
+.hidden{display:none !important;}
+.floating-panel{
+  position:fixed;
+  z-index:120;
+  background:#fff;
+  border:1px solid var(--border-color);
+  border-radius:8px;
+  padding:10px 12px;
+  box-shadow:0 12px 28px rgba(0,0,0,.25);
+  display:flex;
+  gap:10px;
+  align-items:center;
+  font-family:var(--font-sans);
+}
+.floating-panel label{display:flex;flex-direction:column;font-size:.75rem;gap:4px;color:#333;min-width:90px}
+.floating-panel select,.floating-panel input[type="number"]{border:1px solid #ccc;border-radius:6px;padding:4px 6px;font-size:.85rem;font-family:inherit}
+.floating-panel input[type="color"]{width:36px;height:24px;border:none;background:transparent;padding:0}
+.toggle-row{display:flex;gap:6px;align-items:center}
+.mini-btn{
+  width:28px;height:28px;border-radius:6px;border:1px solid var(--border-color);
+  background:#f5f5f5;cursor:pointer;font-weight:700;font-family:var(--font-sans);
+}
+.mini-btn.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.color-row{display:flex;align-items:center;gap:6px;font-size:.75rem;color:#333}
+
+.signature-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:130;
+}
+.signature-card{
+  background:#fff;padding:20px;border-radius:12px;box-shadow:0 18px 45px rgba(0,0,0,.35);width:min(90vw,460px);display:flex;flex-direction:column;gap:12px;font-family:var(--font-sans);
+}
+.signature-card header{display:flex;align-items:center;justify-content:space-between}
+.signature-card h2{font-size:1.1rem;font-weight:600}
+.signature-card canvas{width:100%;height:auto;border:1px solid #d4d4d4;border-radius:8px;background:#fff;cursor:crosshair;touch-action:none}
+.signature-actions{display:flex;gap:10px;justify-content:flex-end}
+.signature-hint{font-size:.75rem;color:#555;text-align:right}
 </style>
 </head>
 <body>
@@ -108,9 +149,6 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     </button>
 
 
-    <button class="nav-btn icon-btn" id="selectTool" title="Select / Move (Esc)">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l7 16 2-7 7-2z"/></svg>
-    </button>
     <button class="nav-btn icon-btn" id="textTool" title="Add text (T – one time)">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20V7"/><path d="M15 20V7"/></svg>
     </button>
@@ -122,9 +160,6 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     </button>
 
     <!-- Zoom out / info / zoom in -->
-    <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)">−</button>
-    <div id="pageInfo">1 / 1 · 100%</div>
-    <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)">+</button>
     <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 7h18M3 17h18"/><path d="M8 12h8"/><path d="M4 12l-2-2 2-2"/><path d="M20 12l2-2-2-2"/>
@@ -138,6 +173,19 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     <button class="nav-btn icon-btn" id="toggleSpreadBtn" title="One/Two page view">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/>
+      </svg>
+    </button>
+    <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)">−</button>
+    <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)">+</button>
+    <div id="pageInfo" class="nav-info">1 / 1 · 100%</div>
+    <button class="nav-btn icon-btn" id="prevPageBtn" title="Previous page (←)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+    <button class="nav-btn icon-btn" id="nextPageBtn" title="Next page (→)">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
       </svg>
     </button>
   </div>
@@ -167,6 +215,47 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
   </div>
 </aside>
 
+<!-- Floating text style panel -->
+<div id="textStylePanel" class="floating-panel hidden">
+  <label>
+    Font
+    <select id="textFontFamily">
+      <option value="Helvetica">Helvetica</option>
+      <option value="Times New Roman">Times</option>
+      <option value="Courier New">Courier</option>
+      <option value="Georgia">Georgia</option>
+    </select>
+  </label>
+  <label>
+    Size
+    <input id="textFontSize" type="number" min="8" max="96" step="1" value="12"/>
+  </label>
+  <div class="toggle-row">
+    <button id="textBoldBtn" class="mini-btn" title="Bold">B</button>
+    <button id="textItalicBtn" class="mini-btn" title="Italic">I</button>
+  </div>
+  <label class="color-row" title="Text color">
+    <span>Color</span>
+    <input id="textColor" type="color" value="#000000"/>
+  </label>
+</div>
+
+<!-- Signature editor -->
+<div id="signatureModal" class="signature-modal hidden" role="dialog" aria-modal="true">
+  <div class="signature-card">
+    <header>
+      <h2>Create signature</h2>
+      <button id="signatureClose" class="mini-btn" title="Close">×</button>
+    </header>
+    <canvas id="signatureCanvas" width="400" height="160"></canvas>
+    <div class="signature-actions">
+      <button id="signatureClear" class="nav-btn">Clear</button>
+      <button id="signatureSave" class="nav-btn">Save</button>
+    </div>
+    <p class="signature-hint">Tip: right-click the signature button to edit again later.</p>
+  </div>
+</div>
+
 <script>
 /* ----------------- State ----------------- */
 let pdfDoc=null, pdfBytes=null;
@@ -191,7 +280,6 @@ const mainEl = el('main');
 const openBtn = el('openBtn');
 const fileInput = el('file');
 const saveBtn = el('saveBtn');
-const selectTool = el('selectTool');
 const textTool = el('textTool');
 const commentTool = el('commentTool');
 const signatureTool = el('signatureTool');
@@ -203,6 +291,18 @@ const toggleSpreadBtn= el('toggleSpreadBtn');
 const prevPageBtn = el('prevPageBtn');
 const nextPageBtn = el('nextPageBtn');
 const pageInfo = el('pageInfo');
+const textStylePanel = el('textStylePanel');
+const textFontFamily = el('textFontFamily');
+const textFontSize = el('textFontSize');
+const textBoldBtn = el('textBoldBtn');
+const textItalicBtn = el('textItalicBtn');
+const textColor = el('textColor');
+const signatureModal = el('signatureModal');
+const signatureCanvas = el('signatureCanvas');
+const signatureClose = el('signatureClose');
+const signatureClear = el('signatureClear');
+const signatureSave = el('signatureSave');
+const sigCtx = signatureCanvas.getContext('2d');
 const cs = {
   panel: el('commentSidebar'),
   title: el('csTitle'),
@@ -224,11 +324,10 @@ function snapIndexFromScale(scale){ // nearest index
 function setTool(name){
   currentTool = name;
   // visual emphasis (toggle class on icons)
-  [selectTool,textTool,commentTool,signatureTool].forEach(b=>b.classList.remove('active'));
-  if(name==='select') selectTool.classList.add('active');
-  if(name==='textOnce') textTool.classList.add('active');
-  if(name==='commentOnce') commentTool.classList.add('active');
-  if(name==='signatureOnce') signatureTool.classList.add('active');
+  [textTool,commentTool,signatureTool].forEach(b=>b && b.classList.remove('active'));
+  if(name==='textOnce' && textTool) textTool.classList.add('active');
+  if(name==='commentOnce' && commentTool) commentTool.classList.add('active');
+  if(name==='signatureOnce' && signatureTool) signatureTool.classList.add('active');
 }
 function updatePageInfo(){
   const pct = Math.round(currentScale*100);
@@ -303,6 +402,7 @@ fileInput.onchange = async (e)=>{
   await renderAll();
   saveBtn.disabled=false;
   setTool('select');
+  hideTextToolbar();
 };
 saveBtn.onclick = async ()=>{
   if(!pdfBytes){alert('Open a PDF first.');return;}
@@ -363,23 +463,35 @@ saveBtn.onclick = async ()=>{
 };
 
 /* ----------------- Tools ----------------- */
-selectTool.onclick = ()=>setTool('select');
 textTool.onclick = ()=>setTool('textOnce');
 commentTool.onclick = ()=>setTool('commentOnce');
-signatureTool.onclick = ()=>{
-  // One-time "signature" uses a simple prompt for a PNG (paste dataURL) or draws quick scribble
-  const url = prompt('Paste a signature data URL (PNG). Leave blank to draw quickly.');
-  if(url && url.startsWith('data:image')){ signatureDataUrl = url; setTool('signatureOnce'); return; }
-  // quick tiny drawing pad
-  const pad = document.createElement('canvas'); pad.width=400; pad.height=160; pad.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ccc;z-index:100;box-shadow:0 10px 40px rgba(0,0,0,.2)';
-  const pctx = pad.getContext('2d'); pctx.lineWidth=2; pctx.lineCap='round';
-  let drawing=false; pad.onmousedown=(e)=>{drawing=true;pctx.beginPath();pctx.moveTo(e.offsetX,e.offsetY)};
-  pad.onmousemove=(e)=>{if(drawing){pctx.lineTo(e.offsetX,e.offsetY);pctx.stroke();}};
-  pad.onmouseup=()=>drawing=false; pad.onmouseleave=()=>drawing=false;
-  const ok = document.createElement('button'); ok.textContent='Use'; ok.className='nav-btn'; ok.style.cssText='position:fixed;top:calc(50% + 100px);left:50%;transform:translateX(-50%);z-index:101';
-  ok.onclick=()=>{ signatureDataUrl = pad.toDataURL('image/png'); document.body.removeChild(pad); document.body.removeChild(ok); setTool('signatureOnce'); };
-  document.body.appendChild(pad); document.body.appendChild(ok);
-};
+
+function openSignatureModal(){
+  signatureModal.classList.remove('hidden');
+  sigCtx.clearRect(0,0,signatureCanvas.width, signatureCanvas.height);
+  sigDrawing=false;
+  const existing = signatureDataUrl;
+  if(existing){
+    const img = new Image();
+    img.onload = ()=>{ sigCtx.clearRect(0,0,signatureCanvas.width,signatureCanvas.height); sigCtx.drawImage(img,0,0,signatureCanvas.width,signatureCanvas.height); };
+    img.src = existing;
+  }
+  setTool('select');
+}
+function closeSignatureModal(){
+  signatureModal.classList.add('hidden');
+}
+
+if(signatureTool){
+  signatureTool.onclick = ()=>{
+    if(!signatureDataUrl){
+      openSignatureModal();
+    }else{
+      setTool('signatureOnce');
+    }
+  };
+  signatureTool.addEventListener('contextmenu',(e)=>{ e.preventDefault(); openSignatureModal(); });
+}
 
 /* Layer click for placing one-shot items */
 function attachLayerEvents(layer, pageNum){
@@ -399,7 +511,7 @@ function attachLayerEvents(layer, pageNum){
     } else if(currentTool==='signatureOnce' && signatureDataUrl){
       const anno = { id: nextAnnoId++, type:'signature', x, y, w:200, h:80, dataUrl: signatureDataUrl };
       addAnnotationElement(layer, pageNum, anno, true);
-      setTool('select'); signatureDataUrl=null;
+      setTool('select');
     }
   });
 }
@@ -417,6 +529,8 @@ function addAnnotationElement(layer, pageNum, anno, addToState){
     div.style.fontWeight = anno.styles.fontWeight; div.style.fontStyle=anno.styles.fontStyle; div.style.color = anno.styles.color||'#000';
     div.placeholder = 'Type…';
     div.oninput = ()=> { anno.content = div.textContent; };
+    div.addEventListener('focus',()=>showTextToolbar(div, anno));
+    div.addEventListener('click',()=>showTextToolbar(div, anno));
     makeDraggable(div, anno, layer);
     layer.appendChild(div);
     div.focus();
@@ -438,8 +552,8 @@ function addAnnotationElement(layer, pageNum, anno, addToState){
 /* Dragging */
 function makeDraggable(el, anno, layer, isPin=false){
   let dragging=false,sx=0,sy=0, origL=0,origT=0;
-  el.addEventListener('mousedown',(e)=>{ if(e.target!==el) return; dragging=true; sx=e.clientX; sy=e.clientY; origL=parseFloat(el.style.left); origT=parseFloat(el.style.top); e.preventDefault();});
-  window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-sx, dy=e.clientY-sy; el.style.left=(origL+dx)+'px'; el.style.top=(origT+dy)+'px'; if(isPin){ anno.x=parseFloat(el.style.left)+11; anno.y=parseFloat(el.style.top)+11; } else { anno.x=parseFloat(el.style.left); anno.y=parseFloat(el.style.top);} });
+  el.addEventListener('mousedown',(e)=>{ if(e.target!==el) return; dragging=true; sx=e.clientX; sy=e.clientY; origL=parseFloat(el.style.left); origT=parseFloat(el.style.top); e.preventDefault(); if(el.classList.contains('text-anno')) hideTextToolbar(); });
+  window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-sx, dy=e.clientY-sy; el.style.left=(origL+dx)+'px'; el.style.top=(origT+dy)+'px'; if(isPin){ anno.x=parseFloat(el.style.left)+11; anno.y=parseFloat(el.style.top)+11; } else { anno.x=parseFloat(el.style.left); anno.y=parseFloat(el.style.top);} if(el.classList.contains('text-anno')) positionTextToolbar(el); });
   window.addEventListener('mouseup',()=>dragging=false);
 }
 
@@ -557,26 +671,181 @@ toggleReaderBtn.onclick = toggleReader;
 toggleSpreadBtn.onclick = ()=>{ spread2 = !spread2; if(readerMode) applyReaderLayout(); };
 
 /* Page navigation */
-if (prevPageBtn) prevPageBtn.onclick = ()=>{ if(!pdfDoc) return; currentPageIndex = clamp(currentPageIndex-1,0,pdfDoc.numPages-1); if(readerMode) applyReaderLayout(); updatePageInfo(); };
-if (nextPageBtn) nextPageBtn.onclick = ()=>{ if(!pdfDoc) return; currentPageIndex = clamp(currentPageIndex+1,0,pdfDoc.numPages-1); if(readerMode) applyReaderLayout(); updatePageInfo(); };
+function goToPage(delta){
+  if(!pdfDoc) return;
+  currentPageIndex = clamp(currentPageIndex+delta,0,pdfDoc.numPages-1);
+  if(readerMode){
+    applyReaderLayout();
+  }else{
+    const target = pagesEl.querySelector(`.page[data-page="${currentPageIndex+1}"]`);
+    if(target){
+      target.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+  }
+  updatePageInfo();
+}
+if (prevPageBtn) prevPageBtn.onclick = ()=>goToPage(-1);
+if (nextPageBtn) nextPageBtn.onclick = ()=>goToPage(1);
 
 /* ----------------- Keyboard ----------------- */
 document.addEventListener('keydown',(e)=>{
   if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleReader(); return; }
   if(e.key==='+'){ zoomInBtn.click(); }
   if(e.key==='-'){ zoomOutBtn.click(); }
-  if(e.key==='Escape'){ setTool('select'); }
+  if(e.key==='Escape'){
+    setTool('select');
+    hideTextToolbar();
+    if(!signatureModal.classList.contains('hidden')) closeSignatureModal();
+  }
   if(readerMode){
-    if(e.key==='ArrowLeft'){ e.preventDefault(); prevPageBtn.click(); }
-    if(e.key==='ArrowRight'){ e.preventDefault(); nextPageBtn.click(); }
+    if(e.key==='ArrowLeft'){ e.preventDefault(); goToPage(-1); }
+    if(e.key==='ArrowRight'){ e.preventDefault(); goToPage(1); }
     // up/down: allow native scroll
   } else {
     // tool shortcuts
-    if(e.key==='t' || e.key==='T'){ textTool.click(); }
-    if(e.key==='m' || e.key==='M'){ commentTool.click(); }
-    if(e.key==='s' || e.key==='S'){ signatureTool.click(); }
+    if((e.key==='t' || e.key==='T') && textTool){ textTool.click(); }
+    if((e.key==='m' || e.key==='M') && commentTool){ commentTool.click(); }
+    if((e.key==='s' || e.key==='S') && signatureTool){ signatureTool.click(); }
+    if(e.key==='ArrowLeft'){ e.preventDefault(); goToPage(-1); }
+    if(e.key==='ArrowRight'){ e.preventDefault(); goToPage(1); }
   }
 });
+
+/* ----------------- Text toolbar logic ----------------- */
+let textToolbarTarget = null;
+let textToolbarAnno = null;
+
+function positionTextToolbar(el){
+  if(!textToolbarTarget) return;
+  const rect = el.getBoundingClientRect();
+  const panelRect = textStylePanel.getBoundingClientRect();
+  const panelHeight = panelRect.height || textStylePanel.offsetHeight || 0;
+  const panelWidth = panelRect.width || textStylePanel.offsetWidth || 0;
+  let top = window.scrollY + rect.top - panelHeight - 8;
+  let left = window.scrollX + rect.left;
+  if(top < 8){
+    top = window.scrollY + rect.bottom + 8;
+  }
+  const maxLeft = window.scrollX + document.documentElement.clientWidth - panelWidth - 8;
+  if(left > maxLeft){
+    left = maxLeft;
+  }
+  textStylePanel.style.top = Math.max(8, top)+'px';
+  textStylePanel.style.left = Math.max(8, left)+'px';
+}
+
+function showTextToolbar(el, anno){
+  textToolbarTarget = el;
+  textToolbarAnno = anno;
+  textFontFamily.value = anno.styles.fontFamily || 'Helvetica';
+  textFontSize.value = parseInt(anno.styles.fontSize,10)||12;
+  textBoldBtn.classList.toggle('active', anno.styles.fontWeight==='bold');
+  textItalicBtn.classList.toggle('active', anno.styles.fontStyle==='italic');
+  textColor.value = anno.styles.color || '#000000';
+  textStylePanel.classList.remove('hidden');
+  positionTextToolbar(el);
+}
+
+function hideTextToolbar(){
+  textToolbarTarget = null;
+  textToolbarAnno = null;
+  textStylePanel.classList.add('hidden');
+}
+
+textFontFamily.addEventListener('change',()=>{
+  if(!textToolbarTarget||!textToolbarAnno) return;
+  textToolbarAnno.styles.fontFamily = textFontFamily.value;
+  textToolbarTarget.style.fontFamily = textFontFamily.value;
+});
+
+textFontSize.addEventListener('change',()=>{
+  if(!textToolbarTarget||!textToolbarAnno) return;
+  const size = clamp(parseInt(textFontSize.value,10)||12,8,96);
+  textToolbarAnno.styles.fontSize = String(size);
+  textToolbarTarget.style.fontSize = size+'px';
+});
+
+textBoldBtn.addEventListener('click',(e)=>{
+  e.preventDefault();
+  if(!textToolbarTarget||!textToolbarAnno) return;
+  const isBold = textToolbarAnno.styles.fontWeight==='bold';
+  textToolbarAnno.styles.fontWeight = isBold?'normal':'bold';
+  textToolbarTarget.style.fontWeight = textToolbarAnno.styles.fontWeight;
+  textBoldBtn.classList.toggle('active', !isBold);
+});
+
+textItalicBtn.addEventListener('click',(e)=>{
+  e.preventDefault();
+  if(!textToolbarTarget||!textToolbarAnno) return;
+  const isItalic = textToolbarAnno.styles.fontStyle==='italic';
+  textToolbarAnno.styles.fontStyle = isItalic?'normal':'italic';
+  textToolbarTarget.style.fontStyle = textToolbarAnno.styles.fontStyle;
+  textItalicBtn.classList.toggle('active', !isItalic);
+});
+
+textColor.addEventListener('input',()=>{
+  if(!textToolbarTarget||!textToolbarAnno) return;
+  textToolbarAnno.styles.color = textColor.value;
+  textToolbarTarget.style.color = textColor.value;
+});
+
+document.addEventListener('click',(e)=>{
+  if(textStylePanel.contains(e.target) || (textToolbarTarget && textToolbarTarget.contains(e.target))){
+    return;
+  }
+  hideTextToolbar();
+});
+
+window.addEventListener('scroll',()=>{
+  if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
+});
+
+/* ----------------- Signature modal ----------------- */
+sigCtx.lineCap='round';
+sigCtx.lineJoin='round';
+sigCtx.lineWidth=2;
+sigCtx.strokeStyle='#111';
+let sigDrawing=false;
+
+signatureCanvas.addEventListener('pointerdown',(e)=>{
+  e.preventDefault();
+  sigDrawing=true;
+  signatureCanvas.setPointerCapture(e.pointerId);
+  sigCtx.beginPath();
+  sigCtx.moveTo(e.offsetX,e.offsetY);
+});
+signatureCanvas.addEventListener('pointermove',(e)=>{
+  if(sigDrawing) e.preventDefault();
+  if(!sigDrawing) return;
+  sigCtx.lineTo(e.offsetX,e.offsetY);
+  sigCtx.stroke();
+});
+['pointerup','pointerleave','pointercancel'].forEach(ev=>signatureCanvas.addEventListener(ev,(e)=>{
+  if(ev==='pointerup' && signatureCanvas.hasPointerCapture(e.pointerId)) signatureCanvas.releasePointerCapture(e.pointerId);
+  sigDrawing=false;
+}));
+
+signatureClear.onclick = ()=>{
+  sigCtx.clearRect(0,0,signatureCanvas.width, signatureCanvas.height);
+  sigDrawing=false;
+};
+
+signatureClose.onclick = ()=>{
+  closeSignatureModal();
+};
+
+signatureSave.onclick = ()=>{
+  signatureDataUrl = signatureCanvas.toDataURL('image/png');
+  closeSignatureModal();
+  setTool('signatureOnce');
+};
+
+signatureModal.addEventListener('click',(e)=>{
+  if(e.target===signatureModal) closeSignatureModal();
+});
+
+// default tool state highlight
+setTool('select');
 
 /* ----------------- Load via ?src= ----------------- */
 (function(){
