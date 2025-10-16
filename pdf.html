@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,19 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Lightweight PDF Viewer + Annotator</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-<!-- pdf.js & pdf-lib -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
-  const pdfjsLib = window['pdfjs-dist/build/pdf']; // v3 UMD global
-  // (With the worker <script> present, you don’t have to set workerSrc.)
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
 </script>
-
 <style>
-/* ====== Copy of your Modern Editor header/button look (stacked left) ====== */
 :root{
-  --font-serif:'Georgia','Times New Roman',serif;
+  --font-serif:'Times New Roman',serif;
   --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --bg-color:#fffff8;
   --text-color:#1a1a1a;
@@ -26,59 +21,35 @@
   --editor-accent-color:#111111;
   --editor-accent-text-color:#ffffff;
   --editor-ui-font-family:var(--font-sans);
-  --toolbar-width:152px;
+  --toolbar-width:160px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-color);min-height:100vh;overflow:hidden}
-/* Left header column */
-.header{
-  position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:min-content;gap:8px 10px;width:var(--toolbar-width);justify-items:stretch;
-}
-.reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);transition:opacity .2s ease,transform .25s ease;}
+.app{display:flex;height:100vh;width:100vw}
+.header{position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:min-content;gap:8px 10px;width:var(--toolbar-width);justify-items:stretch;transition:opacity .2s ease,transform .25s ease;}
+.reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);}
 .toolbar-sep{grid-column:1/span 2;height:16px}
 .span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;width:100%}
-.hamburger-btn,.icon-btn,.nav-btn{
-  padding:6px 12px;
-  background:var(--editor-accent-color);
-  font-family:var(--editor-ui-font-family);
-  font-size:15px;
-  color:var(--editor-accent-text-color);
-  border:none;
-  border-radius:4px;
-  cursor:pointer;
-  transition:background-color .2s ease,box-shadow .2s ease,color .2s ease;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  min-height:44px;
-  width:100%;
-  box-shadow:0 3px 6px rgba(0,0,0,.35);
-  line-height:1;
-}
-.nav-btn.span-2{width:100%;}
-.hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#1f1f1f;box-shadow:0 4px 10px rgba(0,0,0,.4)}
+.nav-btn{padding:6px 12px;background:var(--editor-accent-color);font-family:var(--editor-ui-font-family);font-size:15px;color:var(--editor-accent-text-color);border:none;border-radius:4px;cursor:pointer;transition:background-color .2s ease,box-shadow .2s ease,color .2s ease;display:flex;align-items:center;justify-content:center;min-height:44px;width:100%;box-shadow:0 3px 6px rgba(0,0,0,.35);line-height:1;}
+.nav-btn:hover:not(:disabled){background:#1f1f1f;box-shadow:0 4px 10px rgba(0,0,0,.4)}
 .nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.45);border-color:#1d4ed8;}
-.icon-btn i,.nav-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
-.icon-btn img{pointer-events:none;width:26px;height:26px;display:block;}
+.nav-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
 .nav-btn.needs-file{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 10px rgba(37,99,235,.45);}
-#toggleReaderBtn i{margin:0 auto;font-size:1.4em;}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
-/* Tiny info pill */
 .nav-info{background:#111;border:1px solid #000;border-radius:4px;padding:4px 8px;text-align:center;font-size:.85rem;font-family:var(--font-sans);color:#f5f5f5;font-weight:500;box-shadow:0 3px 6px rgba(0,0,0,.35)}
-
-/* ====== Viewer area ====== */
-.app{display:flex;height:100vh;width:100vw}
-.main{flex:1;overflow:auto;padding:24px 24px 48px calc(var(--toolbar-width) + 28px); /* left pad for toolbar */}
+.main{flex:1;overflow:auto;padding:24px 24px 48px calc(var(--toolbar-width) + 28px);}
 .reader .main{padding:16px 24px 32px 24px}
 #pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px}
-.page{position:relative;box-shadow:0 2px 8px rgba(0,0,0,.1);background:#fff}
+.page{position:relative;box-shadow:0 2px 8px rgba(0,0,0,.1);background:#fff;}
+.page-inner{position:relative;width:100%;height:100%;}
 .page canvas{display:block;background:#fff}
-.layer{position:absolute;inset:0;pointer-events:auto}
-.reader .layer{display:none} /* hide annotation layer in reader */
-
-/* Annotation elements: transparent, borderless by default */
-.text-anno,.sig-anno,.comment-pin{position:absolute;pointer-events:auto;cursor:move}
-.text-anno{background:transparent;border:none;min-width:120px;min-height:24px;outline:none;color:#000}
+.page .text-layer{position:absolute;inset:0;pointer-events:none;user-select:none;overflow:hidden;}
+.page .text-layer.selectable{pointer-events:auto;user-select:text;}
+.layer-wrapper{position:absolute;inset:0;pointer-events:none;}
+.layer{position:absolute;top:0;left:0;pointer-events:auto;transform-origin:0 0;}
+.layer.disabled{pointer-events:none;}
+.text-anno,.sig-anno,.comment-pin{position:absolute;cursor:move}
+.text-anno{background:transparent;border:none;min-width:120px;min-height:24px;outline:none;color:#000;white-space:pre-wrap;font-family:inherit;}
 .text-anno::placeholder{color:#999}
 .text-anno:focus,.text-anno.selected,.sig-anno.selected,.comment-pin.selected{outline:2px solid #2563eb;outline-offset:1px;border-radius:4px}
 .sig-anno{background:transparent;border:none;display:inline-flex;align-items:stretch;justify-content:stretch;}
@@ -86,79 +57,41 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .sig-anno .resize-handle{position:absolute;right:-6px;bottom:-6px;width:16px;height:16px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:se-resize;opacity:0;transition:opacity .2s ease;}
 .sig-anno:hover .resize-handle,.sig-anno.selected .resize-handle{opacity:1;}
 .comment-pin{width:22px;height:22px;border-radius:50%;background:#ffd166;border:1px solid #f4a261;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333}
-
-/* Comment sidebar (opens on right) */
 #commentSidebar{position:fixed;top:0;right:-380px;width:360px;height:100vh;background:#fff;border-left:1px solid var(--border-color);box-shadow:-10px 0 30px rgba(0,0,0,.15);transition:right .25s;z-index:60;display:flex;flex-direction:column}
 #commentSidebar.open{right:0}
 .cs-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border-color);font-family:var(--font-sans)}
-.cs-thread{flex:1;overflow:auto;padding:10px 14px}
-.cs-item{border-bottom:1px solid #eee;padding:8px 0}
-.cs-item:last-child{border-bottom:none}
-.cs-author{font-weight:600;color:#2563eb;font-size:.85rem}
-.cs-time{font-size:.75rem;color:#666}
-.cs-text{white-space:pre-wrap;margin-top:2px}
-.cs-input{border-top:1px solid var(--border-color);padding:10px 14px}
-.cs-input input,.cs-input textarea{width:100%;border:1px solid #ccc;border-radius:6px;padding:8px;margin-bottom:8px;font-family:inherit;font-size:14px}
+.cs-thread{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:10px}
+.cs-item{border:1px solid #f1f1f1;border-radius:6px;padding:8px 10px;background:#fafafa;font-family:var(--font-sans);display:flex;flex-direction:column;gap:6px;}
+.cs-item header{display:flex;align-items:center;justify-content:space-between;font-size:.8rem;color:#333;gap:10px;}
+.cs-item header strong{color:#2563eb;font-weight:600;}
+.cs-item .cs-body{white-space:pre-wrap;font-size:.85rem;color:#1a1a1a;}
+.cs-item footer{display:flex;align-items:center;justify-content:space-between;font-size:.72rem;color:#777;}
+.cs-item footer button{border:none;background:transparent;color:#2563eb;font-weight:600;cursor:pointer;padding:0;}
+.cs-input{border-top:1px solid var(--border-color);padding:10px 14px;font-family:var(--font-sans);display:flex;flex-direction:column;gap:8px}
+.cs-input textarea{width:100%;border:1px solid #ccc;border-radius:6px;padding:8px;font-size:14px;min-height:70px;resize:vertical}
 .cs-actions{display:flex;gap:8px}
 .cs-actions .nav-btn{flex:1;height:36px;width:auto}
-
-/* Reader controls hint (top-right) */
 .reader-hint{position:fixed;top:10px;right:12px;z-index:40;background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;font-family:var(--font-sans);font-size:.8rem;color:#444;display:none}
 .reader .reader-hint{display:block}
-
-/* Page indicator pill */
 #pageInfo{background:#111;border:1px solid #000;border-radius:14px;padding:4px 8px;font-size:.75rem;font-family:var(--font-sans);color:#f5f5f5;box-shadow:0 3px 6px rgba(0,0,0,.35)}
 #leftBar #pageInfo{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;height:44px;}
-#leftBar .span-2{justify-self:stretch}
-
 .nav-btn.primary-btn{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 12px rgba(37,99,235,.45);}
 .nav-btn.primary-btn:hover{background:#1d4ed8;color:#fff}
 .nav-btn.ghost-btn{background:#f5f5f5;color:#1a1a1a;border-color:#d4d4d4;box-shadow:0 2px 4px rgba(0,0,0,.1);}
 .nav-btn.ghost-btn:hover{background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.18)}
-
-/* Hidden file input */
 #file{display:none}
-
-@media (max-width: 800px){
-  :root{ --toolbar-width:132px; }
-  .main{padding-left:max(64px, calc(var(--toolbar-width) - 24px));}
-  .header{grid-template-columns:repeat(2,minmax(0,1fr));}
-  .hamburger-btn,.icon-btn,.nav-btn{min-height:38px;font-size:14px;padding:6px 10px;}
-}
-
 .hidden{display:none !important;}
-.floating-panel{
-  position:fixed;
-  z-index:120;
-  background:#fff;
-  border:1px solid var(--border-color);
-  border-radius:8px;
-  padding:10px 12px;
-  box-shadow:0 12px 28px rgba(0,0,0,.25);
-  display:flex;
-  gap:10px;
-  align-items:center;
-  font-family:var(--font-sans);
-}
+.floating-panel{position:fixed;z-index:120;background:#fff;border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;box-shadow:0 12px 28px rgba(0,0,0,.25);display:flex;gap:10px;align-items:center;font-family:var(--font-sans);}
 .floating-panel label{display:flex;flex-direction:column;font-size:.75rem;gap:4px;color:#333;min-width:90px}
 .floating-panel select,.floating-panel input[type="number"]{border:1px solid #ccc;border-radius:6px;padding:4px 6px;font-size:.85rem;font-family:inherit}
 .floating-panel input[type="color"]{width:36px;height:24px;border:none;background:transparent;padding:0}
 .toggle-row{display:flex;gap:6px;align-items:center}
-.mini-btn{
-  width:28px;height:28px;border-radius:6px;border:1px solid var(--border-color);
-  background:#f5f5f5;cursor:pointer;font-weight:600;font-family:var(--font-sans);
-  display:flex;align-items:center;justify-content:center;font-size:.9rem;line-height:1;
-}
+.mini-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border-color);background:#f5f5f5;cursor:pointer;font-weight:600;font-family:var(--font-sans);display:flex;align-items:center;justify-content:center;font-size:.9rem;line-height:1;}
 .mini-btn.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
 .mini-btn i{pointer-events:none;}
 .color-row{display:flex;align-items:center;gap:6px;font-size:.75rem;color:#333}
-
-.signature-modal{
-  position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:130;
-}
-.signature-card{
-  background:#fff;padding:20px;border-radius:12px;box-shadow:0 18px 45px rgba(0,0,0,.35);width:min(90vw,460px);display:flex;flex-direction:column;gap:12px;font-family:var(--font-sans);
-}
+.signature-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:130;}
+.signature-card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 18px 45px rgba(0,0,0,.35);width:min(90vw,460px);display:flex;flex-direction:column;gap:12px;font-family:var(--font-sans);}
 .signature-card header{display:flex;align-items:center;justify-content:space-between}
 .signature-card h2{font-size:1.1rem;font-weight:600}
 .identity-field{display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#333}
@@ -169,10 +102,9 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .signature-actions .nav-btn{width:auto;height:36px;font-size:.85rem;padding:0 16px;line-height:1;box-shadow:none}
 .signature-actions .nav-btn.primary-btn{box-shadow:none}
 .signature-hint{font-size:.75rem;color:#555;text-align:left}
-.cs-author-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-family:var(--font-sans);font-size:.85rem;color:#444}
+.cs-author-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-family:var(--font-sans);font-size:.85rem;color:#444}
 .cs-author-line strong{color:#2563eb}
 .cs-author-line .mini-btn{min-width:32px;height:32px;font-size:1rem}
-
 .help-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:140;}
 .help-card{background:#fff;border-radius:12px;box-shadow:0 18px 45px rgba(0,0,0,.35);width:min(92vw,420px);max-height:90vh;display:flex;flex-direction:column;font-family:var(--font-sans);}
 .help-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border-color);}
@@ -181,79 +113,50 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .help-body h3{font-size:.95rem;font-weight:600;margin-bottom:4px;color:#1a1a1a;}
 .help-body ul{padding-left:18px;display:flex;flex-direction:column;gap:6px;}
 .help-body li strong{font-weight:600;color:#1a1a1a;}
-
-body.annotations-hidden .layer{display:none !important;}
-body.annotations-hidden #commentSidebar{right:-380px !important;}
-body.annotations-hidden .floating-panel{display:none !important;}
+@media (max-width: 800px){
+  :root{ --toolbar-width:132px; }
+  .main{padding-left:max(64px, calc(var(--toolbar-width) - 24px));}
+  .header{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .nav-btn{min-height:38px;font-size:14px;padding:6px 10px;}
+}
+body.reader #commentSidebar{display:none;}
+body.text-select .layer{pointer-events:none;}
+body.text-select .page .text-layer{pointer-events:auto;user-select:text;}
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- Left toolbar (icons copied style) -->
   <div class="header" id="leftBar">
-    <!-- Open/Save -->
-    <button class="nav-btn icon-btn" id="openBtn" title="Open PDF">
-      <i class="fa-solid fa-folder-open"></i>
-    </button>
+    <button class="nav-btn" id="openBtn" title="Open PDF"><i class="fa-solid fa-folder-open"></i></button>
     <input id="file" type="file" accept="application/pdf"/>
-    <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF (with comments/text/signatures)" disabled>
-      <i class="fa-solid fa-download"></i>
-    </button>
+    <button class="nav-btn" id="saveBtn" title="Save PDF" disabled><i class="fa-solid fa-download"></i></button>
     <div class="toolbar-sep" aria-hidden="true"></div>
-    <button class="nav-btn icon-btn" id="identityBtn" title="Set name & signature">
-      <i class="fa-solid fa-user"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="textTool" title="Add text (T – one time)">
-      <i class="fa-solid fa-font"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="commentTool" title="Add comment (M – one time)">
-      <i class="fa-solid fa-comment-dots"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="signatureTool" title="Add signature (S – one time)">
-      <i class="fa-solid fa-pen-fancy"></i>
-    </button>
+    <button class="nav-btn" id="identityBtn" title="Set name & signature"><i class="fa-solid fa-user"></i></button>
+    <button class="nav-btn" id="textSelectTool" title="Select text"><i class="fa-solid fa-i-cursor"></i></button>
+    <button class="nav-btn" id="textTool" title="Add text"><i class="fa-solid fa-font"></i></button>
+    <button class="nav-btn" id="commentTool" title="Add comment"><i class="fa-solid fa-comment-dots"></i></button>
+    <button class="nav-btn" id="signatureTool" title="Add signature"><i class="fa-solid fa-pen-fancy"></i></button>
     <div class="toolbar-sep" aria-hidden="true"></div>
-    <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)">
-      <i class="fa-solid fa-magnifying-glass-minus"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)">
-      <i class="fa-solid fa-magnifying-glass-plus"></i>
-    </button>
+    <button class="nav-btn" id="zoomOutBtn" title="Zoom out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+    <button class="nav-btn" id="zoomInBtn" title="Zoom in"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
     <div id="pageInfo" class="nav-info">1 / 1 · 100%</div>
-    <button class="nav-btn icon-btn" id="prevPageBtn" title="Previous page (←)">
-      <i class="fa-solid fa-arrow-left"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="nextPageBtn" title="Next page (→)">
-      <i class="fa-solid fa-arrow-right"></i>
-    </button>
+    <button class="nav-btn" id="prevPageBtn" title="Previous page"><i class="fa-solid fa-arrow-left"></i></button>
+    <button class="nav-btn" id="nextPageBtn" title="Next page"><i class="fa-solid fa-arrow-right"></i></button>
     <div class="toolbar-sep" aria-hidden="true"></div>
-    <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width">
-      <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-    </button>
-    <button class="nav-btn icon-btn" id="toggleReaderBtn" title="Full screen reading (F)">
-      <i class="fa-solid fa-maximize"></i>
-    </button>
+    <button class="nav-btn" id="fitWidthBtn" title="Fit width"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+    <button class="nav-btn" id="toggleReaderBtn" title="Full screen reader"><i class="fa-solid fa-maximize"></i></button>
     <div class="toolbar-sep" aria-hidden="true"></div>
-    <button class="nav-btn icon-btn span-2" id="helpBtn" title="Help & shortcuts">
-      <i class="fa-solid fa-question"></i>
-    </button>
+    <button class="nav-btn span-2" id="helpBtn" title="Help & shortcuts"><i class="fa-solid fa-question"></i></button>
   </div>
-
   <div class="main" id="main">
     <div id="pages"></div>
   </div>
 </div>
-
-<!-- Reader hint -->
-<div class="reader-hint">Full screen reading. ←/→ prev/next page · ↑/↓ scroll · F to exit</div>
-
-<!-- Comment sidebar -->
+<div class="reader-hint">Reader mode. ←/→ to navigate, Esc to exit.</div>
 <aside id="commentSidebar">
   <div class="cs-header">
     <span id="csTitle">Comments</span>
-    <button class="nav-btn icon-btn" id="csClose" title="Close">
-      <i class="fa-solid fa-xmark"></i>
-    </button>
+    <button class="mini-btn" id="csClose" title="Close"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div class="cs-thread" id="csThread"></div>
   <div class="cs-input">
@@ -261,15 +164,13 @@ body.annotations-hidden .floating-panel{display:none !important;}
       <span>Commenting as <strong id="csAuthorName">Guest</strong></span>
       <button class="mini-btn" id="csIdentityBtn" title="Edit name or signature"><i class="fa-solid fa-user-pen"></i></button>
     </div>
-    <textarea id="csText" placeholder="Write a comment..."></textarea>
+    <textarea id="csText" placeholder="Write a reply..."></textarea>
     <div class="cs-actions">
       <button class="nav-btn" id="csPost">Post</button>
       <button class="nav-btn" id="csReplyClose">Hide</button>
     </div>
   </div>
 </aside>
-
-<!-- Help modal -->
 <div id="helpModal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
   <div class="help-card">
     <header class="help-header">
@@ -277,32 +178,29 @@ body.annotations-hidden .floating-panel{display:none !important;}
       <button id="helpClose" class="mini-btn" title="Close help"><i class="fa-solid fa-xmark"></i></button>
     </header>
     <div class="help-body">
-      <p>This viewer keeps PDF markup simple. Open a file, add lightweight notes, and export.</p>
+      <p>Open a PDF, place annotations, and export without leaving the browser.</p>
       <h3>Workflow</h3>
       <ul>
-        <li><strong>Open</strong> a PDF, then <strong>Save</strong> to download your annotations.</li>
-        <li>Set your <strong>name & signature</strong> once; it is stored for reuse.</li>
-        <li>Existing PDF text comments load as pins you can continue replying to.</li>
-        <li>Add <strong>text</strong>, <strong>comments</strong>, or <strong>signatures</strong> one at a time — click the page after picking a tool.</li>
+        <li><strong>Open</strong> a PDF, then <strong>Save</strong> to download an annotated copy.</li>
+        <li>Set your <strong>name & signature</strong> once; they are stored locally.</li>
+        <li>Existing PDF text comments load as threads that you can continue replying to.</li>
+        <li>Use <strong>Select text</strong> to copy original PDF text without leaving the tool.</li>
       </ul>
       <h3>Navigation</h3>
       <ul>
         <li><strong>Arrow keys</strong>: Left/Right change pages, Up/Down scroll.</li>
-        <li><strong>Zoom</strong> with +/- buttons. At any zoom other than 100% annotations are hidden to avoid misalignment.</li>
-        <li><strong>Fit width</strong> fills the reading column. <strong>F</strong> toggles full-screen reader mode.</li>
+        <li><strong>Zoom</strong> with +/- buttons or fit width. Annotations stay aligned at any zoom.</li>
+        <li><strong>Reader mode</strong> focuses on one page and can request the browser's full-screen view.</li>
       </ul>
       <h3>Tips</h3>
       <ul>
-        <li>Use the person icon to change your name or redraw your signature.</li>
-        <li>Click outside the comment drawer to collapse it.</li>
-        <li>Return to 100% (or Save) to bring annotations back after zooming.</li>
-        <li>Signatures show a corner handle — drag it to resize without re-drawing.</li>
+        <li>Click the person icon or sidebar avatar to change your identity.</li>
+        <li>Reply directly to any comment to keep discussion threads together.</li>
+        <li>Drag annotations only inside the page area—the viewer will prevent accidental loss.</li>
       </ul>
     </div>
   </div>
 </div>
-
-<!-- Floating text style panel -->
 <div id="textStylePanel" class="floating-panel hidden">
   <label>
     Font
@@ -310,7 +208,6 @@ body.annotations-hidden .floating-panel{display:none !important;}
       <option value="Helvetica">Helvetica</option>
       <option value="Times New Roman">Times</option>
       <option value="Courier New">Courier</option>
-      <option value="Georgia">Georgia</option>
     </select>
   </label>
   <label>
@@ -326,8 +223,6 @@ body.annotations-hidden .floating-panel{display:none !important;}
     <input id="textColor" type="color" value="#000000"/>
   </label>
 </div>
-
-<!-- Signature editor -->
 <div id="identityModal" class="signature-modal hidden" role="dialog" aria-modal="true">
   <div class="signature-card">
     <header>
@@ -344,1097 +239,237 @@ body.annotations-hidden .floating-panel{display:none !important;}
       <button id="identityClear" class="nav-btn ghost-btn">Clear signature</button>
       <button id="identitySave" class="nav-btn primary-btn">Save</button>
     </div>
-    <p class="signature-hint">Your name is used for comments. Draw or update your signature here.</p>
+    <p class="signature-hint">Your name is used for comment threads. Draw or update your signature here.</p>
   </div>
 </div>
-
 <script>
-/* ----------------- State ----------------- */
-let pdfDoc=null, pdfBytes=null, originalPdfBytes=null;
-let pages = []; // {num, viewportWidth, viewportHeight, canvas, ctx, layer}
-let annotations = {}; // {pageNum: [ {id,type,x,y,content/styles/thread} ]}
-let currentTool = 'select'; // select | textOnce | commentOnce | signatureOnce
-let currentScale = 1; // CSS units
-const ZOOMS = [0.25,0.5,0.75,0.9,1,1.1,1.25,1.5,1.75,2];
-let fitWidthMode = false;
-let readerMode = false;
-let readerPrevScale = 1;
-let currentPageIndex = 0; // 0-based for paging in reader
-let dpr = window.devicePixelRatio || 1;
-const storedSignature = localStorage.getItem('userSignature');
-let signatureDataUrl = storedSignature ? storedSignature : null;
+const state = {
+  pdfDoc: null,
+  pdfBytes: null,
+  pageStates: [],
+  observer: null,
+  visiblePages: new Set(),
+  annotations: new Map(),
+  currentScale: 1,
+  fitWidthMode: false,
+  readerMode: false,
+  readerPrevScale: 1,
+  currentPageIndex: 0,
+  textSelectMode: false
+};
+const ZOOMS = [0.25,0.5,0.75,0.9,1,1.1,1.25,1.5,1.75,2.0,2.5,3];
+const FONT_FACE_MAP = {
+  'Helvetica': {
+    normal: PDFLib.StandardFonts.Helvetica,
+    bold: PDFLib.StandardFonts.HelveticaBold,
+    italic: PDFLib.StandardFonts.HelveticaOblique,
+    bolditalic: PDFLib.StandardFonts.HelveticaBoldOblique
+  },
+  'Times New Roman': {
+    normal: PDFLib.StandardFonts.TimesRoman,
+    bold: PDFLib.StandardFonts.TimesRomanBold,
+    italic: PDFLib.StandardFonts.TimesRomanItalic,
+    bolditalic: PDFLib.StandardFonts.TimesRomanBoldItalic
+  },
+  'Courier New': {
+    normal: PDFLib.StandardFonts.Courier,
+    bold: PDFLib.StandardFonts.CourierBold,
+    italic: PDFLib.StandardFonts.CourierOblique,
+    bolditalic: PDFLib.StandardFonts.CourierBoldOblique
+  }
+};
 let nextAnnoId = 1;
-let openCommentTarget = null; // {pageNum, anno}
+let nextThreadItemId = 1;
+let signatureDataUrl = localStorage.getItem('userSignature') || null;
 let userName = localStorage.getItem('userName') || localStorage.getItem('commentAuthor') || '';
-let pendingTool = null;
-let identityHasInk = !!signatureDataUrl;
-let resizeTimer = null;
 let selectedAnnoEl = null;
-
-/* ----------------- DOM ----------------- */
-const el = (id)=>document.getElementById(id);
-const pagesEl = el('pages');
-const mainEl = el('main');
-const openBtn = el('openBtn');
-const fileInput = el('file');
-const saveBtn = el('saveBtn');
-const identityBtn = el('identityBtn');
-const textTool = el('textTool');
-const commentTool = el('commentTool');
-const signatureTool = el('signatureTool');
-const zoomOutBtn = el('zoomOutBtn');
-const zoomInBtn = el('zoomInBtn');
-const fitWidthBtn = el('fitWidthBtn');
-const toggleReaderBtn= el('toggleReaderBtn');
-const prevPageBtn = el('prevPageBtn');
-const nextPageBtn = el('nextPageBtn');
-const pageInfo = el('pageInfo');
-const helpBtn = el('helpBtn');
-const textStylePanel = el('textStylePanel');
-const textFontFamily = el('textFontFamily');
-const textFontSize = el('textFontSize');
-const textBoldBtn = el('textBoldBtn');
-const textItalicBtn = el('textItalicBtn');
-const textColor = el('textColor');
-const identityModal = el('identityModal');
-const identityName = el('identityName');
-const identityClose = el('identityClose');
-const identityClear = el('identityClear');
-const identitySave = el('identitySave');
-const identitySignatureCanvas = el('identitySignatureCanvas');
-const identityCtx = identitySignatureCanvas.getContext('2d');
-const helpModal = el('helpModal');
-const helpClose = el('helpClose');
-const cs = {
-  panel: el('commentSidebar'),
-  title: el('csTitle'),
-  thread: el('csThread'),
-  authorName: el('csAuthorName'),
-  identityBtn: el('csIdentityBtn'),
-  text: el('csText'),
-  post: el('csPost'),
-  close: el('csClose'),
-  hide: el('csReplyClose')
-};
-
-/* ----------------- Helpers ----------------- */
-function clamp(i,min,max){return Math.max(min,Math.min(max,i));}
-function snapIndexFromScale(scale){ // nearest index
-  let best=0, diff=1e9;
-  for(let i=0;i<ZOOMS.length;i++){ const d=Math.abs(ZOOMS[i]-scale); if(d<diff){diff=d;best=i;}}
-  return best;
-}
-function getMainContentSize(){
-  const styles = getComputedStyle(mainEl);
-  const padX = parseFloat(styles.paddingLeft||'0') + parseFloat(styles.paddingRight||'0');
-  const padY = parseFloat(styles.paddingTop||'0') + parseFloat(styles.paddingBottom||'0');
-  const width = Math.max(0, mainEl.clientWidth - padX);
-  const height = Math.max(0, mainEl.clientHeight - padY);
-  return {width, height};
-}
-async function computeReaderFitScale(){
-  if(!pdfDoc) return currentScale;
-  const pageCount = pdfDoc.numPages;
-  const pageNum = clamp(currentPageIndex+1,1,pageCount);
-  const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 1 });
-  const {width: availW, height: availH} = getMainContentSize();
-  if(availW<=0 || availH<=0) return currentScale;
-  const scaleX = availW / viewport.width;
-  const scaleY = availH / viewport.height;
-  const fitScale = Math.min(scaleX, scaleY);
-  return clamp(fitScale, ZOOMS[0], ZOOMS[ZOOMS.length-1]);
-}
-function setTool(name){
-  currentTool = name;
-  // visual emphasis (toggle class on icons)
-  [textTool,commentTool,signatureTool].forEach(b=>b && b.classList.remove('active'));
-  if(name==='textOnce' && textTool) textTool.classList.add('active');
-  if(name==='commentOnce' && commentTool) commentTool.classList.add('active');
-  if(name==='signatureOnce' && signatureTool) signatureTool.classList.add('active');
-}
-function updateIdentityDisplay(){
-  if(cs.authorName){ cs.authorName.textContent = userName || 'Set name'; }
-}
-function updateToolbarStates(){
-  if(openBtn){ openBtn.classList.toggle('needs-file', !pdfDoc); }
-  if(saveBtn){ saveBtn.disabled = !pdfDoc; }
-  if(toggleReaderBtn){ toggleReaderBtn.classList.toggle('active', readerMode); }
-  if(identityBtn){ identityBtn.title = userName ? `Signed in as ${userName}` : 'Set name & signature'; }
-}
-function updatePageInfo(){
-  const pct = Math.round(currentScale*100);
-  const pageCount = pdfDoc? pdfDoc.numPages : 1;
-  const pageNum = clamp(currentPageIndex+1,1,pageCount);
-  pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
-}
-
-function updateAnnotationVisibility(){
-  const hide = readerMode || Math.abs(currentScale-1) > 0.001;
-  document.body.classList.toggle('annotations-hidden', hide);
-  const annoButtons = [textTool, commentTool, signatureTool];
-  annoButtons.forEach(btn=>{ if(btn){ btn.disabled = hide; if(hide) btn.classList.remove('active'); }});
-  if(hide){
-    if(currentTool!=='select'){ setTool('select'); }
-    hideTextToolbar();
-    closeCommentUI();
-  }
-}
-function setSelectedAnnotation(el){
-  if(selectedAnnoEl && selectedAnnoEl!==el){
-    selectedAnnoEl.classList.remove('selected');
-  }
-  selectedAnnoEl = el || null;
-  if(selectedAnnoEl){
-    selectedAnnoEl.classList.add('selected');
-  }
-}
-function removeAnnotationFromState(anno){
-  if(!anno) return;
-  const pageKey = String(anno.page);
-  const list = annotations[pageKey];
-  if(!Array.isArray(list)) return;
-  const idx = list.indexOf(anno);
-  if(idx>=0) list.splice(idx,1);
-  if(!list.length){
-    delete annotations[pageKey];
-  }
-}
-function removeAnnotationElement(el, anno){
-  if(!el) return;
-  if(anno) removeAnnotationFromState(anno);
-  if(el.parentElement) el.parentElement.removeChild(el);
-  if(selectedAnnoEl===el) setSelectedAnnotation(null);
-  if(anno?.type==='text') hideTextToolbar();
-  if(anno?.type==='comment' && openCommentTarget && openCommentTarget.anno===anno){
-    closeCommentUI();
-  }
-}
-function inchToPx(v){return v*96;}
-function toRgb(hex){const r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,b=parseInt(hex.substr(5,2),16)/255;return {r,g,b};}
-function ensurePageSlot(num){
-  let slot = pages[num-1];
-  if(slot) return slot;
-  slot = { num, canvas: document.createElement('canvas'), ctx: null, layer: document.createElement('div'), vw:0, vh:0 };
-  slot.layer.className='layer';
-  const wrap = document.createElement('div'); wrap.className='page'; wrap.dataset.page=num;
-  wrap.appendChild(slot.canvas); wrap.appendChild(slot.layer);
-  pagesEl.appendChild(wrap);
-  slot.ctx = slot.canvas.getContext('2d');
-  pages[num-1] = slot;
-  attachLayerEvents(slot.layer, num);
-  return slot;
-}
-function anchorScrollBefore(){ // returns normalized position of top in document
-  const total = pagesEl.scrollHeight - mainEl.clientHeight;
-  return total>0 ? mainEl.scrollTop/total : 0;
-}
-function restoreScroll(pos){
-  const total = pagesEl.scrollHeight - mainEl.clientHeight;
-  mainEl.scrollTop = pos*total;
-}
-
-/* ----------------- Rendering ----------------- */
-async function renderPage(num){
-  const page = await pdfDoc.getPage(num);
-  const viewport = page.getViewport({ scale: currentScale });
-  const slot = ensurePageSlot(num);
-  slot.vw = viewport.width; slot.vh = viewport.height;
-  // CSS size
-  slot.canvas.style.width = `${viewport.width}px`;
-  slot.canvas.style.height = `${viewport.height}px`;
-  // device pixels
-  const realW = Math.floor(viewport.width * dpr);
-  const realH = Math.floor(viewport.height * dpr);
-  if (slot.canvas.width !== realW || slot.canvas.height !== realH){
-    slot.canvas.width = realW; slot.canvas.height = realH;
-  }
-  slot.layer.style.width = `${viewport.width}px`;
-  slot.layer.style.height = `${viewport.height}px`;
-
-  const t = [dpr,0,0,dpr,0,0];
-  await page.render({ canvasContext: slot.ctx, viewport, transform: t }).promise;
-}
-async function renderAll(){
-  if(!pdfDoc) return;
-  const keep = readerMode ? 0 : anchorScrollBefore();
-  pagesEl.innerHTML=''; pages.length=0;
-  setSelectedAnnotation(null);
-  hideTextToolbar();
-  for(let i=1;i<=pdfDoc.numPages;i++) await renderPage(i);
-  if(!readerMode) restoreScroll(keep);
-  rehydrateAnnotations();
-  updatePageInfo();
-  applyReaderLayout();
-  updateAnnotationVisibility();
-}
-
-function rehydrateAnnotations(){
-  if(!annotations) return;
-  for(const key of Object.keys(annotations)){
-    const pageNum = parseInt(key,10);
-    if(Number.isNaN(pageNum)) continue;
-    const list = annotations[key];
-    if(!Array.isArray(list) || !list.length) continue;
-    const slot = pages[pageNum-1];
-    if(!slot || !slot.layer) continue;
-    for(const anno of list){
-      addAnnotationElement(slot.layer, pageNum, anno, {addToState:false});
-    }
-  }
-}
-
-function parsePdfCommentThread(contents, fallbackAuthor){
-  const normalized = (contents || '').replace(/\r\n/g,'\n').trim();
-  if(!normalized){
-    return fallbackAuthor ? [{ author: fallbackAuthor, text: '', time: '' }] : [];
-  }
-  const blocks = normalized.split(/\n\s*\n/);
-  const thread = [];
-  for(const block of blocks){
-    const lines = block.split('\n');
-    if(!lines.length) continue;
-    const header = lines.shift().trim();
-    let author = fallbackAuthor || 'Comment';
-    let time = '';
-    let text = lines.join('\n').trim();
-    const match = header.match(/^(.*?)\s*\(([^)]*)\):\s*$/);
-    if(match){
-      author = match[1].trim() || author;
-      time = match[2].trim();
-    }else{
-      text = [header, text].filter(Boolean).join('\n').trim();
-    }
-    thread.push({ author, text, time });
-  }
-  if(!thread.length){
-    thread.push({ author: fallbackAuthor || 'Comment', text: normalized, time: '' });
-  }
-  return thread;
-}
-
-async function importPdfComments(){
-  if(!pdfDoc) return;
-  const pageCount = pdfDoc.numPages;
-  let maxId = nextAnnoId;
-  for(let pageNum=1; pageNum<=pageCount; pageNum++){
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 1 });
-    const pageHeight = viewport.height;
-    const annots = await page.getAnnotations({ intent: 'display' });
-    if(!annots || !annots.length) continue;
-    for(const annot of annots){
-      const subtype = annot.subtype || annot.subType || annot.annotationType;
-      if(subtype!=='Text') continue;
-      if(!Array.isArray(annot.rect) || annot.rect.length<4) continue;
-      const rectRaw = annot.rect.map(v=>typeof v==='number'?v:parseFloat(v));
-      if(rectRaw.some(v=>Number.isNaN(v))) continue;
-      const left = Math.min(rectRaw[0], rectRaw[2]);
-      const top = Math.max(rectRaw[1], rectRaw[3]);
-      const x = left;
-      const y = pageHeight - top;
-      const thread = parsePdfCommentThread(annot.contents || annot.content || '', annot.title || annot.t);
-      if(!thread.length) continue;
-      const anno = { id: maxId++, type:'comment', page: pageNum, x, y, thread };
-      const key = String(pageNum);
-      if(!annotations[key]) annotations[key]=[];
-      annotations[key].push(anno);
-    }
-  }
-  nextAnnoId = maxId;
-}
-
-/* ----------------- Events: open/save ----------------- */
-async function loadPdfBytesArray(byteSource){
-  const data = byteSource instanceof Uint8Array ? Uint8Array.from(byteSource) : new Uint8Array(byteSource);
-  pdfBytes = Uint8Array.from(data);
-  originalPdfBytes = Uint8Array.from(data);
-  const loading = pdfjsLib.getDocument({ data: pdfBytes });
-  pdfDoc = await loading.promise;
-  annotations = {};
-  nextAnnoId = 1;
-  await importPdfComments();
-  currentScale = 1; fitWidthMode=false; readerMode=false; readerPrevScale = 1; currentPageIndex=0;
-  setSelectedAnnotation(null);
-  await renderAll();
-  setTool('select');
-  hideTextToolbar();
-  closeCommentUI();
-  updateToolbarStates();
-  updateAnnotationVisibility();
-}
-
-openBtn.onclick = ()=>fileInput.click();
-fileInput.onchange = async (e)=>{
-  const f=e.target.files[0]; if(!f) return;
-  const buf = await f.arrayBuffer();
-  await loadPdfBytesArray(new Uint8Array(buf));
-  e.target.value='';
-};
-saveBtn.onclick = async ()=>{
-  if(!pdfBytes || !pdfDoc){alert('Open a PDF first.');return;}
-  try{
-    const baseBytes = (originalPdfBytes && originalPdfBytes.length) ? originalPdfBytes : pdfBytes;
-    const sourceBytes = baseBytes instanceof Uint8Array ? Uint8Array.from(baseBytes) : new Uint8Array(baseBytes);
-    if(!sourceBytes.length){ throw new Error('No PDF data available'); }
-    const doc = await PDFLib.PDFDocument.load(sourceBytes);
-    const helv = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-    const helvB = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-    const times = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
-    const cour = await doc.embedFont(PDFLib.StandardFonts.Courier);
-
-    const N=PDFLib.PDFName, S=PDFLib.PDFString, Num=PDFLib.PDFNumber, PDFArray=PDFLib.PDFArray, PDFRef=PDFLib.PDFRef;
-    const addTextAnnot = (page, x,y,w,h, contents, author)=>{
-      const rect = doc.context.obj([Num.of(x),Num.of(y),Num.of(x+w),Num.of(y+h)]);
-      const annot = doc.context.obj({
-        Type:N.of('Annot'), Subtype:N.of('Text'), Rect:rect,
-        Contents:S.of(contents||''), T:S.of(author||''),
-        C: doc.context.obj([Num.of(1),Num.of(0.85),Num.of(0.35)]),
-        Name:N.of('Comment'), F: Num.of(4)
-      });
-      const ref = doc.context.register(annot);
-      const arr = page.node.get(N.of('Annots'));
-      if(arr) arr.push(ref); else page.node.set(N.of('Annots'), doc.context.obj([ref]));
-    };
-
-    const pagesLib = doc.getPages();
-    pagesLib.forEach((page)=>{
-      const annotsObj = page.node.get(N.of('Annots'));
-      if(!annotsObj) return;
-      let arr = annotsObj;
-      if(arr instanceof PDFRef){
-        arr = doc.context.lookup(arr);
-      }
-      if(!(arr instanceof PDFArray)) return;
-      const kept = [];
-      for(let idx=0; idx<arr.size; idx++){
-        const ref = arr.get(idx);
-        const annot = doc.context.lookup(ref);
-        const subtype = annot?.get?.(N.of('Subtype'));
-        const keep = !(subtype && subtype.toString && subtype.toString() === '/Text');
-        if(keep) kept.push(ref);
-      }
-      if(kept.length){
-        const newArr = PDFArray.withContext(doc.context);
-        kept.forEach(ref=>newArr.push(ref));
-        page.node.set(N.of('Annots'), newArr);
-      }else{
-        page.node.delete(N.of('Annots'));
-      }
-    });
-    for(const key in annotations){
-      const list = annotations[key]; if(!list || !list.length) continue;
-      const pIndex = parseInt(key,10)-1;
-      const page = pagesLib[pIndex]; const {height:ph} = page.getSize();
-      for(const a of list){
-        if(a.type==='text' && a.content && a.content.trim()){
-          let font = helv;
-          if(a.styles?.fontFamily?.includes('Times')) font=times;
-          else if(a.styles?.fontFamily?.includes('Courier')) font=cour;
-          else if(a.styles?.fontWeight==='bold') font=helvB;
-          const size = parseInt(a.styles?.fontSize||'12',10);
-          const col = toRgb(a.styles?.color||'#000000');
-          page.drawText(a.content, { x:a.x, y: ph - a.y - size, size, font, color: PDFLib.rgb(col.r,col.g,col.b)});
-        } else if(a.type==='signature' && a.dataUrl){
-          const img = await doc.embedPng(a.dataUrl);
-          const w = a.w || 200, h = a.h || 80;
-          page.drawImage(img, { x:a.x, y: ph - a.y - h, width:w, height:h });
-        } else if(a.type==='comment' && (a.thread?.length||0)>0){
-          // combine thread into a popup string
-          const msg = a.thread.map(c => `${c.author||'User'} (${c.time||''}):\n${c.text||''}`).join('\n\n');
-          addTextAnnot(page, a.x, ph - a.y - 24, 24, 24, msg, a.thread[0]?.author || '');
-        }
-      }
-    }
-    const out = await doc.save();
-    const outBytes = out instanceof Uint8Array ? out : new Uint8Array(out);
-    pdfBytes = Uint8Array.from(outBytes);
-    originalPdfBytes = Uint8Array.from(outBytes);
-    const blob = new Blob([pdfBytes], {type:'application/pdf'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='annotated.pdf'; a.click(); URL.revokeObjectURL(url);
-    if(Math.abs(currentScale-1) > 0.001){
-      setScale(1);
-    }else{
-      updateAnnotationVisibility();
-    }
-  }catch(err){
-    alert('Save failed: '+err.message);
-    console.error(err);
-  }
-};
-
-/* ----------------- Tools ----------------- */
-if(identityBtn){
-  identityBtn.onclick = ()=>{
-    pendingTool = null;
-    openIdentityModal();
-  };
-}
-if(textTool){
-  textTool.onclick = ()=>setTool('textOnce');
-}
-if(commentTool){
-  commentTool.onclick = ()=>{
-    if(!userName){
-      pendingTool = 'commentOnce';
-      openIdentityModal();
-    }else{
-      setTool('commentOnce');
-    }
-  };
-}
-
-function openIdentityModal(){
-  identityModal.classList.remove('hidden');
-  setTool('select');
-  const existing = signatureDataUrl;
-  identityHasInk = !!existing;
-  identityCtx.clearRect(0,0,identitySignatureCanvas.width, identitySignatureCanvas.height);
-  identityName.value = userName;
-  if(existing){
-    const img = new Image();
-    img.onload = ()=>{
-      identityCtx.clearRect(0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);
-      identityCtx.drawImage(img,0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);
-      identityHasInk = true;
-    };
-    img.src = existing;
-  }
-  requestAnimationFrame(()=> identityName.focus());
-}
-function closeIdentityModal(){
-  identityModal.classList.add('hidden');
-  pendingTool = null;
-  setTool('select');
-}
-
-function openHelpModal(){
-  if(helpModal){
-    helpModal.classList.remove('hidden');
-    requestAnimationFrame(()=>{
-      if(helpClose){ helpClose.focus(); }
-    });
-  }
-}
-
-function closeHelpModal(){
-  if(helpModal){ helpModal.classList.add('hidden'); }
-}
-
-if(helpBtn){ helpBtn.onclick = ()=>openHelpModal(); }
-if(helpClose){ helpClose.onclick = ()=>closeHelpModal(); }
-if(helpModal){
-  helpModal.addEventListener('click',(e)=>{ if(e.target===helpModal) closeHelpModal(); });
-}
-
-if(signatureTool){
-  signatureTool.onclick = ()=>{
-    if(!signatureDataUrl){
-      pendingTool = 'signatureOnce';
-      openIdentityModal();
-    }else{
-      setTool('signatureOnce');
-    }
-  };
-}
-
-/* Layer click for placing one-shot items */
-function attachLayerEvents(layer, pageNum){
-  layer.addEventListener('click', (e)=>{
-    if(e.target!==layer) return;
-    const rect = layer.getBoundingClientRect();
-    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
-    if(currentTool==='textOnce'){
-      const anno = { id: nextAnnoId++, type:'text', page: pageNum, x, y, content:'', styles:{fontFamily:'Helvetica',fontSize:'12',fontWeight:'normal',fontStyle:'normal',color:'#000000'} };
-      addAnnotationElement(layer, pageNum, anno, {addToState:true, focus:true});
-      setTool('select'); // one-shot
-    } else if(currentTool==='commentOnce'){
-      const anno = { id: nextAnnoId++, type:'comment', page: pageNum, x, y, thread:[] };
-      addAnnotationElement(layer, pageNum, anno, {addToState:true});
-      openCommentUI(pageNum, anno);
-      setTool('select');
-    } else if(currentTool==='signatureOnce' && signatureDataUrl){
-      const anno = { id: nextAnnoId++, type:'signature', page: pageNum, x, y, w:200, h:80, dataUrl: signatureDataUrl };
-      addAnnotationElement(layer, pageNum, anno, {addToState:true});
-      setTool('select');
-    }
-  });
-}
-
-/* Create DOM for annotation & register */
-function addAnnotationElement(layer, pageNum, anno, opts){
-  const options = typeof opts==='boolean' ? {addToState: opts} : (opts || {});
-  const { addToState=false, focus=false } = options;
-  const pageKey = String(pageNum);
-  anno.page = pageNum;
-  if(addToState){
-    if(!annotations[pageKey]) annotations[pageKey]=[];
-    annotations[pageKey].push(anno);
-  }
-  if(anno.type==='text'){
-    const div = document.createElement('div');
-    div.className='text-anno';
-    div.contentEditable=true;
-    div.dataset.id=anno.id;
-    div.dataset.page=pageKey;
-    div._anno = anno;
-    div.style.left = anno.x+'px'; div.style.top = anno.y+'px'; div.style.minWidth='120px'; div.style.minHeight='24px';
-    div.style.fontFamily = anno.styles.fontFamily; div.style.fontSize = (parseInt(anno.styles.fontSize,10)||12)+'px';
-    div.style.fontWeight = anno.styles.fontWeight; div.style.fontStyle=anno.styles.fontStyle; div.style.color = anno.styles.color||'#000';
-    div.placeholder = 'Type…';
-    div.textContent = anno.content || '';
-    div.addEventListener('input',()=>{
-      anno.content = div.textContent;
-      if(document.activeElement===div){
-        showTextToolbar(div, anno);
-        positionTextToolbar(div);
-      }
-    });
-    div.addEventListener('focus',()=>{
-      setSelectedAnnotation(div);
-      showTextToolbar(div, anno);
-    });
-    div.addEventListener('click',()=>{
-      if(document.activeElement!==div) div.focus();
-      setSelectedAnnotation(div);
-      showTextToolbar(div, anno);
-    });
-    div.addEventListener('blur',()=>{
-      if(selectedAnnoEl===div) setSelectedAnnotation(null);
-      if(!div.textContent.trim()){
-        removeAnnotationElement(div, anno);
-      }
-    });
-    makeDraggable(div, anno, layer);
-    layer.appendChild(div);
-    if(focus){
-      div.focus();
-      showTextToolbar(div, anno);
-    }
-  } else if(anno.type==='comment'){
-    const pin = document.createElement('div'); pin.className='comment-pin'; pin.textContent='C'; pin.dataset.id=anno.id; pin.dataset.page=pageKey; pin._anno = anno;
-    pin.style.left = (anno.x-11)+'px'; pin.style.top=(anno.y-11)+'px';
-    pin.onclick = (ev)=>{ ev.stopPropagation(); openCommentUI(pageNum, anno); };
-    makeDraggable(pin, anno, layer, true);
-    layer.appendChild(pin);
-  } else if(anno.type==='signature'){
-    const box = document.createElement('div'); box.className='sig-anno'; box.dataset.id=anno.id; box.dataset.page=pageKey; box._anno=anno;
-    box.style.left=anno.x+'px'; box.style.top=anno.y+'px';
-    const width = parseFloat(anno.w)||200; const height = parseFloat(anno.h)||80;
-    anno.w = width; anno.h = height;
-    box.style.width=width+'px'; box.style.height=height+'px';
-    const img = document.createElement('img'); img.src=anno.dataUrl; img.draggable=false; box.appendChild(img);
-    const handle = document.createElement('div'); handle.className='resize-handle'; box.appendChild(handle);
-    box.addEventListener('mousedown',()=>{
-      setSelectedAnnotation(box);
-    });
-    makeDraggable(box, anno, layer);
-    makeResizable(box, handle, anno);
-    layer.appendChild(box);
-  }
-}
-
-/* Dragging */
-function makeDraggable(el, anno, layer, isPin=false){
-  const isText = el.classList.contains('text-anno');
-  const isSignature = el.classList.contains('sig-anno');
-  let dragging=false;
-  let dragCandidate=false;
-  let sx=0,sy=0, origL=0,origT=0;
-
-  const updatePosition = (left, top)=>{
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    if(isPin){
-      anno.x = left + 11;
-      anno.y = top + 11;
-    }else{
-      anno.x = left;
-      anno.y = top;
-    }
-    if(isText && textToolbarTarget===el){
-      positionTextToolbar(el);
-    }
-  };
-
-  el.addEventListener('mousedown',(e)=>{
-    if(e.button && e.button!==0) return;
-    if(isText){
-      dragCandidate = true;
-      sx = e.clientX;
-      sy = e.clientY;
-      origL = parseFloat(el.style.left)||0;
-      origT = parseFloat(el.style.top)||0;
-      return;
-    }
-    if(!isSignature && !isPin && e.target!==el) return;
-    dragging = true;
-    sx = e.clientX;
-    sy = e.clientY;
-    origL = parseFloat(el.style.left)||0;
-    origT = parseFloat(el.style.top)||0;
-    e.preventDefault();
-    if(isText) hideTextToolbar();
-  });
-
-  window.addEventListener('mousemove',(e)=>{
-    if(isText){
-      if(!dragCandidate) return;
-      const dx = e.clientX - sx;
-      const dy = e.clientY - sy;
-      if(!dragging){
-        if(Math.abs(dx)<=3 && Math.abs(dy)<=3) return;
-        dragging = true;
-        hideTextToolbar();
-      }
-      e.preventDefault();
-      updatePosition(origL + dx, origT + dy);
-      return;
-    }
-    if(!dragging) return;
-    const dx = e.clientX - sx;
-    const dy = e.clientY - sy;
-    e.preventDefault();
-    updatePosition(origL + dx, origT + dy);
-  });
-
-  window.addEventListener('mouseup',()=>{
-    if(dragging || dragCandidate){
-      dragging = false;
-      dragCandidate = false;
-    }
-  });
-}
-
-function makeResizable(el, handle, anno){
-  if(!handle) return;
-  const MIN_W = 60;
-  const MIN_H = 24;
-  let resizing=false,startX=0,startY=0,startW=0,startH=0;
-  handle.addEventListener('mousedown',(e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    resizing=true;
-    startX=e.clientX; startY=e.clientY;
-    startW=parseFloat(el.style.width)||anno.w||200;
-    startH=parseFloat(el.style.height)||anno.h||80;
-    setSelectedAnnotation(el);
-  });
-  window.addEventListener('mousemove',(e)=>{
-    if(!resizing) return;
-    const dw=e.clientX-startX;
-    const dh=e.clientY-startY;
-    const newW=Math.max(MIN_W, startW+dw);
-    const newH=Math.max(MIN_H, startH+dh);
-    el.style.width=`${newW}px`;
-    el.style.height=`${newH}px`;
-    anno.w=newW;
-    anno.h=newH;
-  });
-  window.addEventListener('mouseup',()=>{
-    if(resizing){ resizing=false; }
-  });
-}
-
-document.addEventListener('mousedown',(e)=>{
-  if(e.target.closest && (e.target.closest('.sig-anno') || e.target.closest('.text-anno') || e.target.closest('.comment-pin'))){
-    return;
-  }
-  if(selectedAnnoEl){
-    setSelectedAnnotation(null);
-  }
-});
-
-/* ----------------- Comment UI (right sidebar) ----------------- */
-function openCommentUI(pageNum, anno){
-  openCommentTarget = {pageNum, anno};
-  cs.panel.classList.add('open');
-  cs.thread.innerHTML='';
-  cs.title.textContent = `Comments (p.${pageNum})`;
-  updateIdentityDisplay();
-  if(anno.thread && anno.thread.length){
-    for(const c of anno.thread){
-      const div = document.createElement('div'); div.className='cs-item';
-      div.innerHTML = `<div class="cs-author">${c.author||'User'}</div>
-        <div class="cs-text">${(c.text||'').replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>
-        <div class="cs-time">${c.time||''}</div>`;
-      cs.thread.appendChild(div);
-    }
-    cs.thread.scrollTop = cs.thread.scrollHeight;
-  }
-  cs.text.focus();
-}
-function closeCommentUI(){
-  cs.panel.classList.remove('open');
-  openCommentTarget = null;
-}
-cs.post.onclick = ()=>{
-  if(!openCommentTarget) return;
-  if(!userName){
-    pendingTool = null;
-    openIdentityModal();
-    return;
-  }
-  const text = cs.text.value.trim(); if(!text) return;
-  const c = {author: userName, text, time: new Date().toLocaleString()};
-  const {pageNum, anno} = openCommentTarget;
-  if(!anno.thread) anno.thread=[]; anno.thread.push(c);
-  cs.text.value='';
-  openCommentUI(pageNum, anno);
-};
-cs.close.onclick = closeCommentUI;
-cs.hide.onclick = closeCommentUI;
-if(cs.identityBtn){
-  cs.identityBtn.onclick = ()=>{
-    pendingTool = null;
-    openIdentityModal();
-  };
-}
-
-/* Close sidebar when clicking outside */
-document.addEventListener('click',(e)=>{
-  if(!cs.panel.classList.contains('open')) return;
-  if(cs.panel.contains(e.target)) return;
-  if(e.target.closest && e.target.closest('.comment-pin')) return;
-  closeCommentUI();
-}, true);
-
-/* ----------------- Zoom & layout ----------------- */
-function setScale(scale){
-  currentScale = scale; fitWidthMode=false;
-  updateAnnotationVisibility();
-  renderAll();
-}
-zoomInBtn.onclick = ()=>{
-  const idx = snapIndexFromScale(currentScale);
-  const next = clamp(idx+1,0,ZOOMS.length-1);
-  setScale(ZOOMS[next]);
-};
-zoomOutBtn.onclick = ()=>{
-  const idx = snapIndexFromScale(currentScale);
-  const prev = clamp(idx-1,0,ZOOMS.length-1);
-  setScale(ZOOMS[prev]);
-};
-fitWidthBtn.onclick = ()=>{
-  if(!pdfDoc) return;
-  // fit first page width
-  pdfDoc.getPage(1).then(page=>{
-    const viewport = page.getViewport({scale:1});
-    const {width: availWidth} = getMainContentSize();
-    const target = availWidth>0 ? availWidth : mainEl.clientWidth;
-    let scale = Math.max(ZOOMS[0], Math.min(ZOOMS[ZOOMS.length-1], target / viewport.width));
-    currentScale = scale; fitWidthMode=true;
-    updateAnnotationVisibility();
-    renderAll();
-  });
-};
-
-/* ----------------- Reader Mode & paging ----------------- */
-function applyReaderLayout(){
-  document.body.classList.toggle('reader', readerMode);
-  // In reader mode, show only the current page, hide others
-  const pc = pdfDoc ? pdfDoc.numPages : 0;
-  pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='none'; wrap.style.marginRight=''; });
-  if(!pdfDoc) return;
-  if(!readerMode){
-    // show all
-    pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='block'; wrap.style.marginRight=''; });
-    return;
-  }
-  const p = clamp(currentPageIndex+1,1,pc);
-  const wrap = pagesEl.querySelector(`.page[data-page="${p}"]`);
-  if(wrap){ wrap.style.display='block'; }
-}
-async function toggleReader(){
-  if(!pdfDoc){ return; }
-  const entering = !readerMode;
-  if(entering){
-    readerPrevScale = currentScale;
-    readerMode = true;
-    fitWidthMode = false;
-    const fitScale = await computeReaderFitScale();
-    currentScale = fitScale;
-    await renderAll();
-    mainEl.scrollTop = 0;
-    mainEl.scrollLeft = 0;
-    closeCommentUI();
-    if(document.fullscreenElement==null){
-      const req = document.documentElement.requestFullscreen;
-      if(typeof req==='function'){
-        Promise.resolve(req.call(document.documentElement)).catch(()=>{});
-      }
-    }
-  }else{
-    readerMode = false;
-    fitWidthMode = false;
-    currentScale = readerPrevScale || currentScale;
-    await renderAll();
-    mainEl.scrollTop = 0;
-    mainEl.scrollLeft = 0;
-    if(document.fullscreenElement && typeof document.exitFullscreen==='function'){
-      document.exitFullscreen().catch?.(()=>{});
-    }
-  }
-  updatePageInfo();
-  updateToolbarStates();
-  updateAnnotationVisibility();
-}
-if(toggleReaderBtn){ toggleReaderBtn.addEventListener('click',()=>{ toggleReader(); }); }
-
-/* Page navigation */
-function goToPage(delta){
-  if(!pdfDoc) return;
-  const pageCount = pdfDoc.numPages;
-  currentPageIndex = clamp(currentPageIndex+delta,0,pageCount-1);
-  if(readerMode){
-    applyReaderLayout();
-    mainEl.scrollTop = 0;
-    mainEl.scrollLeft = 0;
-  }else{
-    const target = pagesEl.querySelector(`.page[data-page="${currentPageIndex+1}"]`);
-    if(target){
-      target.scrollIntoView({behavior:'smooth',block:'start'});
-    }
-  }
-  updatePageInfo();
-}
-if (prevPageBtn) prevPageBtn.onclick = ()=>goToPage(-1);
-if (nextPageBtn) nextPageBtn.onclick = ()=>goToPage(1);
-
-/* ----------------- Keyboard ----------------- */
-document.addEventListener('keydown',(e)=>{
-  const targetTag = e.target.tagName;
-  const editing = e.target.isContentEditable || targetTag==='INPUT' || targetTag==='TEXTAREA' || targetTag==='SELECT';
-  if(e.key==='Delete' && !editing && selectedAnnoEl){
-    const anno = selectedAnnoEl._anno;
-    if(anno){
-      removeAnnotationElement(selectedAnnoEl, anno);
-      e.preventDefault();
-      return;
-    }
-  }
-  if(!editing && (e.key==='f' || e.key==='F')){ e.preventDefault(); toggleReader(); return; }
-  if(!editing && e.key==='+'){ zoomInBtn.click(); }
-  if(!editing && e.key==='-'){ zoomOutBtn.click(); }
-  if((e.key==='ArrowUp' || e.key==='ArrowDown') && !editing){
-    e.preventDefault();
-    const delta = e.key==='ArrowUp' ? -120 : 120;
-    mainEl.scrollBy({top: delta, behavior:'smooth'});
-    return;
-  }
-  if(e.key==='Escape'){
-    setTool('select');
-    hideTextToolbar();
-    if(identityModal && !identityModal.classList.contains('hidden')) closeIdentityModal();
-    if(helpModal && !helpModal.classList.contains('hidden')) closeHelpModal();
-  }
-  if(readerMode){
-    if(!editing && e.key==='ArrowLeft'){ e.preventDefault(); goToPage(-1); }
-    if(!editing && e.key==='ArrowRight'){ e.preventDefault(); goToPage(1); }
-  } else {
-    if(!editing && (e.key==='t' || e.key==='T') && textTool){ textTool.click(); }
-    if(!editing && (e.key==='m' || e.key==='M') && commentTool){ commentTool.click(); }
-    if(!editing && (e.key==='s' || e.key==='S') && signatureTool){ signatureTool.click(); }
-    if(!editing && e.key==='ArrowLeft'){ e.preventDefault(); goToPage(-1); }
-    if(!editing && e.key==='ArrowRight'){ e.preventDefault(); goToPage(1); }
-  }
-});
-
-/* ----------------- Text toolbar logic ----------------- */
 let textToolbarTarget = null;
 let textToolbarAnno = null;
-
-function positionTextToolbar(el){
-  if(!textToolbarTarget) return;
-  const rect = el.getBoundingClientRect();
-  const panelRect = textStylePanel.getBoundingClientRect();
-  const panelHeight = panelRect.height || textStylePanel.offsetHeight || 0;
-  const panelWidth = panelRect.width || textStylePanel.offsetWidth || 0;
-  let top = window.scrollY + rect.top - panelHeight - 8;
-  let left = window.scrollX + rect.left;
-  if(top < 8){
-    top = window.scrollY + rect.bottom + 8;
-  }
-  const maxLeft = window.scrollX + document.documentElement.clientWidth - panelWidth - 8;
-  if(left > maxLeft){
-    left = maxLeft;
-  }
-  textStylePanel.style.top = Math.max(8, top)+'px';
-  textStylePanel.style.left = Math.max(8, left)+'px';
-}
-
-function showTextToolbar(el, anno){
-  textToolbarTarget = el;
-  textToolbarAnno = anno;
-  textFontFamily.value = anno.styles.fontFamily || 'Helvetica';
-  textFontSize.value = parseInt(anno.styles.fontSize,10)||12;
-  textBoldBtn.classList.toggle('active', anno.styles.fontWeight==='bold');
-  textItalicBtn.classList.toggle('active', anno.styles.fontStyle==='italic');
-  textColor.value = anno.styles.color || '#000000';
-  textStylePanel.classList.remove('hidden');
-  positionTextToolbar(el);
-}
-
-function hideTextToolbar(){
-  textToolbarTarget = null;
-  textToolbarAnno = null;
-  textStylePanel.classList.add('hidden');
-}
-
-textFontFamily.addEventListener('change',()=>{
-  if(!textToolbarTarget||!textToolbarAnno) return;
-  textToolbarAnno.styles.fontFamily = textFontFamily.value;
-  textToolbarTarget.style.fontFamily = textFontFamily.value;
-});
-
-textFontSize.addEventListener('change',()=>{
-  if(!textToolbarTarget||!textToolbarAnno) return;
-  const size = clamp(parseInt(textFontSize.value,10)||12,8,96);
-  textToolbarAnno.styles.fontSize = String(size);
-  textToolbarTarget.style.fontSize = size+'px';
-});
-
-textBoldBtn.addEventListener('click',(e)=>{
-  e.preventDefault();
-  if(!textToolbarTarget||!textToolbarAnno) return;
-  const isBold = textToolbarAnno.styles.fontWeight==='bold';
-  textToolbarAnno.styles.fontWeight = isBold?'normal':'bold';
-  textToolbarTarget.style.fontWeight = textToolbarAnno.styles.fontWeight;
-  textBoldBtn.classList.toggle('active', !isBold);
-});
-
-textItalicBtn.addEventListener('click',(e)=>{
-  e.preventDefault();
-  if(!textToolbarTarget||!textToolbarAnno) return;
-  const isItalic = textToolbarAnno.styles.fontStyle==='italic';
-  textToolbarAnno.styles.fontStyle = isItalic?'normal':'italic';
-  textToolbarTarget.style.fontStyle = textToolbarAnno.styles.fontStyle;
-  textItalicBtn.classList.toggle('active', !isItalic);
-});
-
-textColor.addEventListener('input',()=>{
-  if(!textToolbarTarget||!textToolbarAnno) return;
-  textToolbarAnno.styles.color = textColor.value;
-  textToolbarTarget.style.color = textColor.value;
-});
-
-document.addEventListener('click',(e)=>{
-  if(textStylePanel.contains(e.target) || (textToolbarTarget && textToolbarTarget.contains(e.target))){
-    return;
-  }
-  hideTextToolbar();
-});
-
-window.addEventListener('scroll',()=>{
-  if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
-});
-if(mainEl){
-  mainEl.addEventListener('scroll',()=>{
-    if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
-  });
-}
-
-window.addEventListener('resize',()=>{
-  dpr = window.devicePixelRatio || 1;
-  if(textToolbarTarget) positionTextToolbar(textToolbarTarget);
-  if(resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(async ()=>{
-    if(readerMode && pdfDoc){
-      const scale = await computeReaderFitScale();
-      currentScale = scale;
-      await renderAll();
-      mainEl.scrollTop = 0;
-      updatePageInfo();
-      updateToolbarStates();
-    }
-  }, 120);
-});
-
-/* ----------------- Signature modal ----------------- */
-identityCtx.lineCap='round';
-identityCtx.lineJoin='round';
-identityCtx.lineWidth=2;
-identityCtx.strokeStyle='#111';
-let identityDrawing=false;
-
-identitySignatureCanvas.addEventListener('pointerdown',(e)=>{
-  e.preventDefault();
-  identityDrawing=true;
-  identitySignatureCanvas.setPointerCapture(e.pointerId);
-  identityCtx.beginPath();
-  identityCtx.moveTo(e.offsetX,e.offsetY);
-  identityHasInk = true;
-});
-identitySignatureCanvas.addEventListener('pointermove',(e)=>{
-  if(identityDrawing) e.preventDefault();
-  if(!identityDrawing) return;
-  identityCtx.lineTo(e.offsetX,e.offsetY);
-  identityCtx.stroke();
-});
-['pointerup','pointerleave','pointercancel'].forEach(ev=>identitySignatureCanvas.addEventListener(ev,(e)=>{
-  if(ev==='pointerup' && identitySignatureCanvas.hasPointerCapture(e.pointerId)) identitySignatureCanvas.releasePointerCapture(e.pointerId);
-  identityDrawing=false;
-}));
-
-identityClear.onclick = ()=>{
-  identityCtx.clearRect(0,0,identitySignatureCanvas.width, identitySignatureCanvas.height);
-  identityHasInk=false;
+let pendingTool = null;
+let openCommentTarget = null;
+let resizeTimer = null;
+let dpr = window.devicePixelRatio || 1;
+const COMMENT_PIN_SIZE = 22;
+const pagesEl = document.getElementById('pages');
+const mainEl = document.getElementById('main');
+const openBtn = document.getElementById('openBtn');
+const fileInput = document.getElementById('file');
+const saveBtn = document.getElementById('saveBtn');
+const identityBtn = document.getElementById('identityBtn');
+const textSelectTool = document.getElementById('textSelectTool');
+const textTool = document.getElementById('textTool');
+const commentTool = document.getElementById('commentTool');
+const signatureTool = document.getElementById('signatureTool');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+const zoomInBtn = document.getElementById('zoomInBtn');
+const fitWidthBtn = document.getElementById('fitWidthBtn');
+const toggleReaderBtn = document.getElementById('toggleReaderBtn');
+const prevPageBtn = document.getElementById('prevPageBtn');
+const nextPageBtn = document.getElementById('nextPageBtn');
+const pageInfo = document.getElementById('pageInfo');
+const helpBtn = document.getElementById('helpBtn');
+const helpModal = document.getElementById('helpModal');
+const helpClose = document.getElementById('helpClose');
+const identityModal = document.getElementById('identityModal');
+const identityName = document.getElementById('identityName');
+const identityClose = document.getElementById('identityClose');
+const identityClear = document.getElementById('identityClear');
+const identitySave = document.getElementById('identitySave');
+const identitySignatureCanvas = document.getElementById('identitySignatureCanvas');
+const identityCtx = identitySignatureCanvas.getContext('2d');
+const textStylePanel = document.getElementById('textStylePanel');
+const textFontFamily = document.getElementById('textFontFamily');
+const textFontSize = document.getElementById('textFontSize');
+const textBoldBtn = document.getElementById('textBoldBtn');
+const textItalicBtn = document.getElementById('textItalicBtn');
+const textColor = document.getElementById('textColor');
+const cs = {
+  panel: document.getElementById('commentSidebar'),
+  title: document.getElementById('csTitle'),
+  thread: document.getElementById('csThread'),
+  authorName: document.getElementById('csAuthorName'),
+  identityBtn: document.getElementById('csIdentityBtn'),
+  text: document.getElementById('csText'),
+  post: document.getElementById('csPost'),
+  close: document.getElementById('csClose'),
+  hide: document.getElementById('csReplyClose')
 };
-
-identityClose.onclick = ()=>{
-  closeIdentityModal();
-};
-
-identitySave.onclick = ()=>{
-  const name = identityName.value.trim();
-  if(!name){
-    identityName.focus();
-    return;
-  }
-  userName = name;
-  localStorage.setItem('userName', userName);
-  localStorage.removeItem('commentAuthor');
-  signatureDataUrl = identityHasInk ? identitySignatureCanvas.toDataURL('image/png') : null;
-  if(signatureDataUrl){
-    localStorage.setItem('userSignature', signatureDataUrl);
-  }else{
-    localStorage.removeItem('userSignature');
-  }
-  updateIdentityDisplay();
-  updateToolbarStates();
-  identityModal.classList.add('hidden');
-  const nextTool = pendingTool;
-  pendingTool = null;
-  if(nextTool){
-    if(nextTool==='signatureOnce' && !signatureDataUrl){
-      setTool('select');
-    }else{
-      setTool(nextTool);
-    }
-  }
-};
-
-identityModal.addEventListener('click',(e)=>{
-  if(e.target===identityModal) closeIdentityModal();
+const readerHint = document.querySelector('.reader-hint');
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function snapIndexFromScale(scale){let best=0,diff=Infinity;for(let i=0;i<ZOOMS.length;i++){const d=Math.abs(ZOOMS[i]-scale);if(d<diff){diff=d;best=i;}}return best;}
+function toRgb(hex){const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;return {r,g,b};}
+function ensureArrayForPage(pageNum){const key=String(pageNum);if(!state.annotations.has(key)) state.annotations.set(key,[]);return state.annotations.get(key);}
+function findAnnotationById(pageNum,id){const list=ensureArrayForPage(pageNum);return list.find(a=>a.id===id);}
+function removeAnnotationFromState(anno){if(!anno) return;const list=ensureArrayForPage(anno.page);const idx=list.indexOf(anno);if(idx>=0){list.splice(idx,1);}if(!list.length){state.annotations.delete(String(anno.page));}}
+function clearDocumentState(){if(state.observer){state.observer.disconnect();state.observer=null;}state.visiblePages.clear();state.pageStates.forEach(ps=>{if(ps.renderTask){ps.renderTask.cancel();ps.renderTask=null;}});state.pageStates=[];pagesEl.innerHTML='';state.annotations.clear();nextAnnoId=1;nextThreadItemId=1;state.pdfDoc=null;state.pdfBytes=null;renderQueue.clear();setSelectedAnnotation(null);hideTextToolbar();closeCommentUI();}
+function createPageState(pageNum,width,height){const wrapper=document.createElement('div');wrapper.className='page';wrapper.dataset.page=pageNum;const inner=document.createElement('div');inner.className='page-inner';const canvas=document.createElement('canvas');const textLayer=document.createElement('div');textLayer.className='text-layer';const layerWrapper=document.createElement('div');layerWrapper.className='layer-wrapper';const layer=document.createElement('div');layer.className='layer';layerWrapper.appendChild(layer);inner.appendChild(canvas);inner.appendChild(textLayer);inner.appendChild(layerWrapper);wrapper.appendChild(inner);pagesEl.appendChild(wrapper);const ctx=canvas.getContext('2d');const pageState={num:pageNum,baseWidth:width,baseHeight:height,wrapper,inner,canvas,ctx,textLayer,layer,layerWrapper,renderTask:null,renderedScale:0,textContent:null};attachLayerEvents(layer,pageState);return pageState;}
+function setupIntersectionObserver(){if(state.observer){state.observer.disconnect();}state.observer=new IntersectionObserver((entries)=>{entries.forEach(entry=>{const wrapper=entry.target;const pageNum=parseInt(wrapper.dataset.page,10);const pageState=state.pageStates[pageNum-1];if(!pageState) return;if(entry.isIntersecting){state.visiblePages.add(pageNum);queueRender(pageState);queueRenderNeighbors(pageNum);}else{state.visiblePages.delete(pageNum);}}),{root:mainEl,rootMargin:'600px 0px',threshold:0.01});state.pageStates.forEach(ps=>state.observer.observe(ps.wrapper));}
+function queueRenderNeighbors(pageNum){const prev=state.pageStates[pageNum-2];const next=state.pageStates[pageNum];if(prev) queueRender(prev);if(next) queueRender(next);}
+const renderQueue=new Map();
+function queueRender(pageState){if(!state.pdfDoc) return;if(renderQueue.has(pageState.num)) return;const task=renderPage(pageState).catch(err=>{console.error('Render error',err);}).finally(()=>{renderQueue.delete(pageState.num);});renderQueue.set(pageState.num,task);}
+async function renderPage(pageState){const page=await state.pdfDoc.getPage(pageState.num);const viewport=page.getViewport({scale:state.currentScale});updatePageLayout(pageState,viewport.width,viewport.height);const realW=Math.floor(viewport.width*dpr);const realH=Math.floor(viewport.height*dpr);if(pageState.canvas.width!==realW||pageState.canvas.height!==realH){pageState.canvas.width=realW;pageState.canvas.height=realH;}const renderContext={canvasContext:pageState.ctx,viewport,transform:dpr!==1?[dpr,0,0,dpr,0,0]:undefined};if(pageState.renderTask){pageState.renderTask.cancel();}
+pageState.renderTask=page.render(renderContext);
+await pageState.renderTask.promise;
+pageState.renderTask=null;
+pageState.renderedScale=state.currentScale;
+await renderTextLayer(pageState,page,viewport);
+page.cleanup?.();
+}
+async function renderTextLayer(pageState,page,viewport){if(!pageState.textLayer) return;if(!pageState.textContent){pageState.textContent=await page.getTextContent();}
+pageState.textLayer.textContent='';
+const textLayerRender=pdfjsLib.renderTextLayer({textContent:pageState.textContent,container:pageState.textLayer,viewport,enhanceTextSelection:true,textDivs:[]});
+await textLayerRender.promise;
+updateTextLayerSelectable();
+}
+function updatePageLayout(pageState,displayWidth,displayHeight){pageState.wrapper.style.width=`${displayWidth}px`;pageState.wrapper.style.height=`${displayHeight}px`;pageState.canvas.style.width=`${displayWidth}px`;pageState.canvas.style.height=`${displayHeight}px`;pageState.layerWrapper.style.width=`${displayWidth}px`;pageState.layerWrapper.style.height=`${displayHeight}px`;pageState.layer.style.width=`${pageState.baseWidth}px`;pageState.layer.style.height=`${pageState.baseHeight}px`;pageState.layer.style.transform=`scale(${state.currentScale})`;pageState.textLayer.style.width=`${displayWidth}px`;pageState.textLayer.style.height=`${displayHeight}px`;}
+function updateAllPageLayouts(){state.pageStates.forEach(ps=>{updatePageLayout(ps,ps.baseWidth*state.currentScale,ps.baseHeight*state.currentScale);});}
+function updateTextLayerSelectable(){state.pageStates.forEach(ps=>{if(state.textSelectMode){ps.textLayer.classList.add('selectable');}else{ps.textLayer.classList.remove('selectable');}});}
+function convertClientToPageCoords(pageState,clientX,clientY){const rect=pageState.layerWrapper.getBoundingClientRect();const scaleX=rect.width/pageState.baseWidth;const scaleY=rect.height/pageState.baseHeight;return {x:(clientX-rect.left)/scaleX,y:(clientY-rect.top)/scaleY};}
+function clampAnnotationBounds(anno,pageState){const pageWidth=pageState.baseWidth;const pageHeight=pageState.baseHeight;const width=anno.width || inferAnnotationWidth(anno);const height=anno.height || inferAnnotationHeight(anno);anno.pageX=clamp(anno.pageX,0,Math.max(0,pageWidth-width));anno.pageY=clamp(anno.pageY,0,Math.max(0,pageHeight-height));}
+function inferAnnotationWidth(anno){if(anno.type==='comment') return COMMENT_PIN_SIZE; if(anno.type==='signature') return anno.width||200; if(anno.type==='text'){ if(anno.width) return anno.width; if(anno.dom){const rect=anno.dom.getBoundingClientRect();const scale=state.currentScale||1;return rect.width/scale;}return 160;} return 0;}
+function inferAnnotationHeight(anno){if(anno.type==='comment') return COMMENT_PIN_SIZE; if(anno.type==='signature') return anno.height||80; if(anno.type==='text'){ if(anno.height) return anno.height; if(anno.dom){const rect=anno.dom.getBoundingClientRect();const scale=state.currentScale||1;return rect.height/scale;}const size=parseFloat(anno.styles?.fontSize||'12')||12;return size*1.2;} return 0;}
+function pageToCss(pageState,pageX,pageY){return {left:pageX*state.currentScale,top:pageY*state.currentScale};}
+function applyAnnotationPosition(anno,pageState){if(!anno.dom) return;const pos=pageToCss(pageState,anno.pageX,anno.pageY);if(anno.type==='comment'){anno.dom.style.left=`${pos.left}px`;anno.dom.style.top=`${pos.top}px`;}
+else{anno.dom.style.left=`${pos.left}px`;anno.dom.style.top=`${pos.top}px`;}
+if(anno.type==='signature'){const w=(anno.width||200)*state.currentScale;const h=(anno.height||80)*state.currentScale;anno.dom.style.width=`${w}px`;anno.dom.style.height=`${h}px`;}else if(anno.type==='text'){const width=(anno.width||anno.dom?.offsetWidth||160)*state.currentScale;anno.dom.style.minWidth=`${Math.max(120*state.currentScale, width)}px`;anno.dom.style.fontSize=`${parseFloat(anno.styles.fontSize||'12')*state.currentScale}px`;anno.dom.style.fontWeight=anno.styles.fontWeight||'normal';anno.dom.style.fontStyle=anno.styles.fontStyle||'normal';anno.dom.style.color=anno.styles.color||'#000';anno.dom.style.fontFamily=anno.styles.fontFamily||'Helvetica';}
+}
+function refreshAnnotations(){state.annotations.forEach((list,pageKey)=>{const pageNum=parseInt(pageKey,10);const pageState=state.pageStates[pageNum-1];if(!pageState) return;list.forEach(anno=>applyAnnotationPosition(anno,pageState));});}
+function setSelectedAnnotation(el){if(selectedAnnoEl&&selectedAnnoEl!==el){selectedAnnoEl.classList.remove('selected');}
+selectedAnnoEl=el||null;if(selectedAnnoEl){selectedAnnoEl.classList.add('selected');}}
+function attachLayerEvents(layer,pageState){layer.addEventListener('pointerdown',e=>{if(e.target!==layer) return;if(state.readerMode) return;if(state.textSelectMode) return;e.preventDefault();const coords=convertClientToPageCoords(pageState,e.clientX,e.clientY);if(currentTool==='textOnce'){const styles={fontFamily:textFontFamily.value,fontSize:textFontSize.value,fontWeight:textBoldBtn.classList.contains('active')?'bold':'normal',fontStyle:textItalicBtn.classList.contains('active')?'italic':'normal',color:textColor.value};const anno={id:nextAnnoId++,type:'text',page:pageState.num,pageX:coords.x,pageY:coords.y,content:'',styles,width:160,height:32};addAnnotation(pageState,anno,{focus:true});setTool('select');}else if(currentTool==='commentOnce'){if(!ensureUserName()) return;const anno={id:nextAnnoId++,type:'comment',page:pageState.num,pageX:coords.x-COMMENT_PIN_SIZE/2,pageY:coords.y-COMMENT_PIN_SIZE/2,thread:[],meta:{}};clampAnnotationBounds(anno,pageState);addAnnotation(pageState,anno,{});openCommentUI(pageState.num,anno);setTool('select');}else if(currentTool==='signatureOnce'&&signatureDataUrl){const width=200;const height=80;const anno={id:nextAnnoId++,type:'signature',page:pageState.num,pageX:coords.x,pageY:coords.y,width,height,dataUrl:signatureDataUrl};clampAnnotationBounds(anno,pageState);addAnnotation(pageState,anno,{});setTool('select');}});}
+function addAnnotation(pageState,anno,{focus=false}={}){const list=ensureArrayForPage(pageState.num);list.push(anno);const el=createAnnotationElement(pageState,anno);anno.dom=el;applyAnnotationPosition(anno,pageState);if(focus&&anno.dom){setSelectedAnnotation(anno.dom);anno.dom.focus();showTextToolbar(anno.dom,anno);}if(anno.type==='comment'){openCommentUI(pageState.num,anno);}return anno;}
+function createAnnotationElement(pageState,anno){if(anno.type==='text'){const div=document.createElement('div');div.className='text-anno';div.contentEditable=true;div.dataset.id=anno.id;div.dataset.page=pageState.num;div._anno=anno;div.textContent=anno.content||'';div.style.fontFamily=anno.styles.fontFamily||'Helvetica';div.style.fontWeight=anno.styles.fontWeight||'normal';div.style.fontStyle=anno.styles.fontStyle||'normal';div.style.color=anno.styles.color||'#000';div.addEventListener('input',()=>{anno.content=div.textContent||'';updateTextAnnotationSize(anno,div);if(document.activeElement===div){showTextToolbar(div,anno);positionTextToolbar(div);}});div.addEventListener('focus',()=>{setSelectedAnnotation(div);showTextToolbar(div,anno);positionTextToolbar(div);});div.addEventListener('blur',()=>{if(selectedAnnoEl===div) setSelectedAnnotation(null);hideTextToolbar();if(!(div.textContent||'').trim()){removeAnnotation(anno);}});div.addEventListener('click',()=>{if(document.activeElement!==div) div.focus();});makeDraggable(div,anno,pageState,{allowTextDrag:true});pageState.layer.appendChild(div);return div;}if(anno.type==='comment'){const pin=document.createElement('div');pin.className='comment-pin';pin.textContent='C';pin.dataset.id=anno.id;pin.dataset.page=pageState.num;pin._anno=anno;pin.addEventListener('click',ev=>{ev.stopPropagation();openCommentUI(pageState.num,anno);});makeDraggable(pin,anno,pageState,{isPin:true});pageState.layer.appendChild(pin);return pin;}if(anno.type==='signature'){const box=document.createElement('div');box.className='sig-anno';box.dataset.id=anno.id;box.dataset.page=pageState.num;box._anno=anno;const img=document.createElement('img');img.src=anno.dataUrl;img.draggable=false;box.appendChild(img);const handle=document.createElement('div');handle.className='resize-handle';box.appendChild(handle);box.addEventListener('pointerdown',()=>{setSelectedAnnotation(box);});makeDraggable(box,anno,pageState,{});makeResizable(box,handle,anno,pageState);pageState.layer.appendChild(box);return box;}return null;}
+function updateTextAnnotationSize(anno,el){const rect=el.getBoundingClientRect();if(rect.width&&rect.height){anno.width=rect.width/state.currentScale;anno.height=rect.height/state.currentScale;}}
+function makeDraggable(el,anno,pageState,{allowTextDrag=false,isPin=false}){let dragging=false;let pointerId=null;let startX=0,startY=0;let originX=0,originY=0;let dragThresholdMet=!allowTextDrag;const pointerMove=e=>{if(e.pointerId!==pointerId) return;const dx=(e.clientX-startX)/state.currentScale;const dy=(e.clientY-startY)/state.currentScale;if(!dragThresholdMet){if(Math.abs(dx)>3||Math.abs(dy)>3){dragThresholdMet=true;hideTextToolbar();}}if(!dragThresholdMet) return;dragging=true;e.preventDefault();anno.pageX=originX+dx;anno.pageY=originY+dy;if(isPin){anno.pageX+=COMMENT_PIN_SIZE/2;anno.pageY+=COMMENT_PIN_SIZE/2;}clampAnnotationBounds(anno,pageState);if(isPin){anno.pageX-=COMMENT_PIN_SIZE/2;anno.pageY-=COMMENT_PIN_SIZE/2;}applyAnnotationPosition(anno,pageState);};const pointerUp=e=>{if(e.pointerId!==pointerId) return;el.releasePointerCapture(pointerId);window.removeEventListener('pointermove',pointerMove);window.removeEventListener('pointerup',pointerUp);if(dragging&&anno.type==='text'&&anno.dom){updateTextAnnotationSize(anno,anno.dom);}dragging=false;pointerId=null;};el.addEventListener('pointerdown',e=>{if(e.button!==0) return;if(state.textSelectMode) return;pointerId=e.pointerId;el.setPointerCapture(pointerId);startX=e.clientX;startY=e.clientY;if(isPin){originX=anno.pageX+COMMENT_PIN_SIZE/2;originY=anno.pageY+COMMENT_PIN_SIZE/2;}else{originX=anno.pageX;originY=anno.pageY;}dragThresholdMet=!allowTextDrag;dragging=false;window.addEventListener('pointermove',pointerMove);window.addEventListener('pointerup',pointerUp);if(anno.type==='text'){hideTextToolbar();}});}
+function makeResizable(el,handle,anno,pageState){if(!handle) return;let resizing=false;let pointerId=null;let startX=0,startY=0,startW=0,startH=0;const onMove=e=>{if(e.pointerId!==pointerId||!resizing) return;const dx=(e.clientX-startX)/state.currentScale;const dy=(e.clientY-startY)/state.currentScale;const newW=Math.max(60,startW+dx);const newH=Math.max(24,startH+dy);anno.width=newW;anno.height=newH;applyAnnotationPosition(anno,pageState);};const onUp=e=>{if(e.pointerId!==pointerId) return;handle.releasePointerCapture(pointerId);resizing=false;pointerId=null;window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};handle.addEventListener('pointerdown',e=>{if(e.button!==0) return;e.stopPropagation();pointerId=e.pointerId;handle.setPointerCapture(pointerId);startX=e.clientX;startY=e.clientY;startW=anno.width||inferAnnotationWidth(anno);startH=anno.height||inferAnnotationHeight(anno);resizing=true;window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);});}
+function removeAnnotation(anno){const pageState=state.pageStates[anno.page-1];if(anno.dom&&anno.dom.parentElement){anno.dom.parentElement.removeChild(anno.dom);}if(selectedAnnoEl===anno.dom){setSelectedAnnotation(null);}removeAnnotationFromState(anno);if(anno.type==='text'){hideTextToolbar();}}
+document.addEventListener('pointerdown',e=>{if(e.target.closest && (e.target.closest('.sig-anno')||e.target.closest('.text-anno')||e.target.closest('.comment-pin'))){return;}if(selectedAnnoEl){setSelectedAnnotation(null);}});
+function ensureUserName(){if(userName) return true;pendingTool=null;openIdentityModal();return false;}
+function openCommentUI(pageNum,anno){openCommentTarget={pageNum,anno,replyTo:null};cs.panel.classList.add('open');cs.thread.innerHTML='';cs.title.textContent=`Comments (p.${pageNum})`;updateIdentityDisplay();if(anno.thread&&anno.thread.length){for(const item of anno.thread){const div=document.createElement('div');div.className='cs-item';const header=document.createElement('header');const author=document.createElement('strong');author.textContent=item.author||'User';header.appendChild(author);const time=document.createElement('span');time.textContent=item.time||'';header.appendChild(time);div.appendChild(header);const body=document.createElement('div');body.className='cs-body';body.textContent=item.replyTo?`↳ ${item.text||''}`:(item.text||'');div.appendChild(body);const footer=document.createElement('footer');const replyBtn=document.createElement('button');replyBtn.textContent='Reply';replyBtn.addEventListener('click',()=>{openCommentTarget.replyTo=item.id;cs.text.placeholder=`Reply to ${item.author||'User'}...`;cs.text.focus();});footer.appendChild(replyBtn);const meta=document.createElement('span');meta.textContent=item.replyTo?`Reply to #${item.replyTo}`:'Thread';footer.appendChild(meta);div.appendChild(footer);cs.thread.appendChild(div);}cs.thread.scrollTop=cs.thread.scrollHeight;}cs.text.placeholder=openCommentTarget.replyTo?cs.text.placeholder:'Write a reply...';cs.text.focus();}
+function closeCommentUI(){cs.panel.classList.remove('open');openCommentTarget=null;cs.text.value='';cs.text.placeholder='Write a reply...';}
+cs.post.addEventListener('click',()=>{if(!openCommentTarget) return;if(!ensureUserName()) return;const text=cs.text.value.trim();if(!text) return;const entry={id:nextThreadItemId++,author:userName,text,time:new Date().toLocaleString(),replyTo:openCommentTarget.replyTo};const {pageNum,anno}=openCommentTarget;if(!anno.thread) anno.thread=[];anno.thread.push(entry);cs.text.value='';openCommentTarget.replyTo=null;openCommentUI(pageNum,anno);});
+cs.close.addEventListener('click',closeCommentUI);
+cs.hide.addEventListener('click',closeCommentUI);
+if(cs.identityBtn){cs.identityBtn.addEventListener('click',()=>{pendingTool=null;openIdentityModal();});}
+document.addEventListener('click',e=>{if(!cs.panel.classList.contains('open')) return;if(cs.panel.contains(e.target)) return;if(e.target.closest&&e.target.closest('.comment-pin')) return;closeCommentUI();},true);
+let currentTool='select';
+function setTool(tool){currentTool=tool;[textSelectTool,textTool,commentTool,signatureTool].forEach(btn=>btn&&btn.classList.remove('active'));if(tool==='textSelect'){textSelectTool?.classList.add('active');}else if(tool==='textOnce'){textTool?.classList.add('active');}else if(tool==='commentOnce'){commentTool?.classList.add('active');}else if(tool==='signatureOnce'){signatureTool?.classList.add('active');}}
+function updateIdentityDisplay(){if(cs.authorName){cs.authorName.textContent=userName||'Set name';}}
+function updateToolbarStates(){openBtn?.classList.toggle('needs-file',!state.pdfDoc);if(saveBtn) saveBtn.disabled=!state.pdfDoc;toggleReaderBtn?.classList.toggle('active',state.readerMode);identityBtn.title=userName?`Signed in as ${userName}`:'Set name & signature';}
+function updatePageInfo(){const pct=Math.round(state.currentScale*100);const total=state.pdfDoc?state.pdfDoc.numPages:1;const current=clamp(state.currentPageIndex+1,1,total);pageInfo.textContent=`${current} / ${total} · ${pct}%`;}
+function rerenderVisiblePages(){state.visiblePages.forEach(num=>{const ps=state.pageStates[num-1];if(ps) queueRender(ps);});}
+function setScale(scale){if(!state.pdfDoc) return;state.currentScale=clamp(scale,ZOOMS[0],ZOOMS[ZOOMS.length-1]);state.fitWidthMode=false;updateAllPageLayouts();refreshAnnotations();rerenderVisiblePages();updatePageInfo();if(textToolbarTarget) positionTextToolbar(textToolbarTarget);}
+zoomInBtn?.addEventListener('click',()=>{const idx=snapIndexFromScale(state.currentScale);const next=clamp(idx+1,0,ZOOMS.length-1);setScale(ZOOMS[next]);});
+zoomOutBtn?.addEventListener('click',()=>{const idx=snapIndexFromScale(state.currentScale);const prev=clamp(idx-1,0,ZOOMS.length-1);setScale(ZOOMS[prev]);});
+fitWidthBtn?.addEventListener('click',async()=>{if(!state.pdfDoc) return;const first=state.pageStates[0];if(!first){return;}const availableWidth=getMainContentSize().width;const target=availableWidth>0?availableWidth:mainEl.clientWidth;const scale=clamp(target/first.baseWidth,ZOOMS[0],ZOOMS[ZOOMS.length-1]);state.fitWidthMode=true;setScale(scale);});
+function getMainContentSize(){const styles=getComputedStyle(mainEl);const padX=parseFloat(styles.paddingLeft||'0')+parseFloat(styles.paddingRight||'0');const padY=parseFloat(styles.paddingTop||'0')+parseFloat(styles.paddingBottom||'0');return {width:Math.max(0,mainEl.clientWidth-padX),height:Math.max(0,mainEl.clientHeight-padY)};}
+function applyReaderLayout(){document.body.classList.toggle('reader',state.readerMode);if(!state.pdfDoc) return;if(!state.readerMode){state.pageStates.forEach(ps=>{ps.wrapper.style.display='block';});return;}const pageCount=state.pdfDoc.numPages;state.pageStates.forEach(ps=>{ps.wrapper.style.display='none';});const current=clamp(state.currentPageIndex+1,1,pageCount);const ps=state.pageStates[current-1];if(ps){ps.wrapper.style.display='block';}}
+async function toggleReader(){if(!state.pdfDoc) return;const entering=!state.readerMode;if(entering){state.readerPrevScale=state.currentScale;state.readerMode=true;state.fitWidthMode=false;const available=getMainContentSize();const current=state.pageStates[state.currentPageIndex]||state.pageStates[0];if(current){const scaleX=available.width/current.baseWidth;const scaleY=available.height/current.baseHeight;const target=clamp(Math.min(scaleX,scaleY),ZOOMS[0],ZOOMS[ZOOMS.length-1]);state.currentScale=target;}updateAllPageLayouts();refreshAnnotations();applyReaderLayout();rerenderVisiblePages();mainEl.scrollTop=0;mainEl.scrollLeft=0;if(document.fullscreenElement==null){document.documentElement.requestFullscreen?.().catch(()=>{});}}else{state.readerMode=false;state.fitWidthMode=false;state.currentScale=state.readerPrevScale||state.currentScale;applyReaderLayout();updateAllPageLayouts();refreshAnnotations();rerenderVisiblePages();mainEl.scrollTop=0;mainEl.scrollLeft=0;if(document.fullscreenElement){document.exitFullscreen?.().catch(()=>{});}}updatePageInfo();updateToolbarStates();}
+toggleReaderBtn?.addEventListener('click',toggleReader);
+function goToPage(delta){if(!state.pdfDoc) return;const count=state.pdfDoc.numPages;state.currentPageIndex=clamp(state.currentPageIndex+delta,0,count-1);if(state.readerMode){applyReaderLayout();mainEl.scrollTop=0;mainEl.scrollLeft=0;rerenderVisiblePages();}else{const target=state.pageStates[state.currentPageIndex];if(target){target.wrapper.scrollIntoView({behavior:'smooth',block:'start'});}}updatePageInfo();}
+prevPageBtn?.addEventListener('click',()=>goToPage(-1));
+nextPageBtn?.addEventListener('click',()=>goToPage(1));
+document.addEventListener('keydown',e=>{const target=e.target;const editing=target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName);if(e.key==='Delete'&&!editing&&selectedAnnoEl){const anno=selectedAnnoEl._anno;removeAnnotation(anno);e.preventDefault();return;}if(!editing&&(e.key==='f'||e.key==='F')){e.preventDefault();toggleReader();return;}if(!editing&&e.key==='+'){zoomInBtn?.click();return;}if(!editing&&e.key==='-'){zoomOutBtn?.click();return;}if((e.key==='ArrowUp'||e.key==='ArrowDown')&&!editing&&!state.readerMode){e.preventDefault();mainEl.scrollBy({top:e.key==='ArrowUp'?-120:120,behavior:'smooth'});return;}if(e.key==='Escape'){setTool('select');state.textSelectMode=false;document.body.classList.remove('text-select');hideTextToolbar();if(!identityModal.classList.contains('hidden')) closeIdentityModal();if(!helpModal.classList.contains('hidden')) closeHelpModal();closeCommentUI();}if(state.readerMode){if(!editing&&e.key==='ArrowLeft'){e.preventDefault();goToPage(-1);}if(!editing&&e.key==='ArrowRight'){e.preventDefault();goToPage(1);}}else{if(!editing&&(e.key==='t'||e.key==='T')){textTool?.click();}if(!editing&&(e.key==='m'||e.key==='M')){commentTool?.click();}if(!editing&&(e.key==='s'||e.key==='S')){signatureTool?.click();}if(!editing&&e.key==='ArrowLeft'){e.preventDefault();goToPage(-1);}if(!editing&&e.key==='ArrowRight'){e.preventDefault();goToPage(1);}}
 });
-
-// default tool state highlight
-setTool('select');
+function positionTextToolbar(el){if(!textToolbarTarget) return;const rect=el.getBoundingClientRect();const panelRect=textStylePanel.getBoundingClientRect();const panelHeight=panelRect.height||textStylePanel.offsetHeight||0;const panelWidth=panelRect.width||textStylePanel.offsetWidth||0;let top=window.scrollY+rect.top-panelHeight-8;let left=window.scrollX+rect.left;if(top<8){top=window.scrollY+rect.bottom+8;}const maxLeft=window.scrollX+document.documentElement.clientWidth-panelWidth-8;if(left>maxLeft){left=maxLeft;}textStylePanel.style.top=`${Math.max(8,top)}px`;textStylePanel.style.left=`${Math.max(8,left)}px`;}
+function showTextToolbar(el,anno){textToolbarTarget=el;textToolbarAnno=anno;textFontFamily.value=anno.styles.fontFamily||'Helvetica';textFontSize.value=parseInt(anno.styles.fontSize,10)||12;textBoldBtn.classList.toggle('active',anno.styles.fontWeight==='bold');textItalicBtn.classList.toggle('active',anno.styles.fontStyle==='italic');textColor.value=anno.styles.color||'#000000';textStylePanel.classList.remove('hidden');positionTextToolbar(el);}
+function hideTextToolbar(){textToolbarTarget=null;textToolbarAnno=null;textStylePanel.classList.add('hidden');}
+textFontFamily.addEventListener('change',()=>{if(!textToolbarTarget||!textToolbarAnno) return;textToolbarAnno.styles.fontFamily=textFontFamily.value;textToolbarTarget.style.fontFamily=textFontFamily.value;});
+textFontSize.addEventListener('change',()=>{if(!textToolbarTarget||!textToolbarAnno) return;const size=clamp(parseInt(textFontSize.value,10)||12,8,96);textToolbarAnno.styles.fontSize=String(size);textToolbarTarget.style.fontSize=`${size*state.currentScale}px`;updateTextAnnotationSize(textToolbarAnno,textToolbarTarget);applyAnnotationPosition(textToolbarAnno,state.pageStates[textToolbarAnno.page-1]);});
+textBoldBtn.addEventListener('click',e=>{e.preventDefault();if(!textToolbarTarget||!textToolbarAnno) return;const isBold=textToolbarAnno.styles.fontWeight==='bold';textToolbarAnno.styles.fontWeight=isBold?'normal':'bold';textToolbarTarget.style.fontWeight=textToolbarAnno.styles.fontWeight;textBoldBtn.classList.toggle('active',!isBold);});
+textItalicBtn.addEventListener('click',e=>{e.preventDefault();if(!textToolbarTarget||!textToolbarAnno) return;const isItalic=textToolbarAnno.styles.fontStyle==='italic';textToolbarAnno.styles.fontStyle=isItalic?'normal':'italic';textToolbarTarget.style.fontStyle=textToolbarAnno.styles.fontStyle;textItalicBtn.classList.toggle('active',!isItalic);});
+textColor.addEventListener('input',()=>{if(!textToolbarTarget||!textToolbarAnno) return;textToolbarAnno.styles.color=textColor.value;textToolbarTarget.style.color=textColor.value;});
+document.addEventListener('click',e=>{if(textStylePanel.contains(e.target)) return;if(textToolbarTarget&&textToolbarTarget.contains(e.target)) return;hideTextToolbar();});
+window.addEventListener('scroll',()=>{if(textToolbarTarget) positionTextToolbar(textToolbarTarget);});
+mainEl.addEventListener('scroll',()=>{if(textToolbarTarget) positionTextToolbar(textToolbarTarget);});
+window.addEventListener('resize',()=>{dpr=window.devicePixelRatio||1;if(textToolbarTarget) positionTextToolbar(textToolbarTarget);if(resizeTimer) clearTimeout(resizeTimer);resizeTimer=setTimeout(async()=>{if(state.readerMode&&state.pdfDoc){const available=getMainContentSize();const current=state.pageStates[state.currentPageIndex]||state.pageStates[0];if(current){const scaleX=available.width/current.baseWidth;const scaleY=available.height/current.baseHeight;state.currentScale=clamp(Math.min(scaleX,scaleY),ZOOMS[0],ZOOMS[ZOOMS.length-1]);updateAllPageLayouts();refreshAnnotations();rerenderVisiblePages();mainEl.scrollTop=0;updatePageInfo();updateToolbarStates();}}else if(state.fitWidthMode){const first=state.pageStates[0];if(first){const availableWidth=getMainContentSize().width;const target=availableWidth>0?availableWidth:mainEl.clientWidth;state.currentScale=clamp(target/first.baseWidth,ZOOMS[0],ZOOMS[ZOOMS.length-1]);updateAllPageLayouts();refreshAnnotations();rerenderVisiblePages();updatePageInfo();}}},150);});
+openBtn?.addEventListener('click',()=>fileInput.click());
+textSelectTool?.addEventListener('click',()=>{if(!state.pdfDoc) return;state.textSelectMode=!state.textSelectMode;if(state.textSelectMode){setTool('textSelect');document.body.classList.add('text-select');}else{document.body.classList.remove('text-select');setTool('select');}updateTextLayerSelectable();});
+textTool?.addEventListener('click',()=>{if(!state.pdfDoc) return;state.textSelectMode=false;document.body.classList.remove('text-select');setTool('textOnce');});
+commentTool?.addEventListener('click',()=>{if(!state.pdfDoc) return;if(!ensureUserName()) return;state.textSelectMode=false;document.body.classList.remove('text-select');setTool('commentOnce');});
+signatureTool?.addEventListener('click',()=>{if(!state.pdfDoc) return;if(!signatureDataUrl){pendingTool='signatureOnce';openIdentityModal();return;}state.textSelectMode=false;document.body.classList.remove('text-select');setTool('signatureOnce');});
+function openIdentityModal(){identityModal.classList.remove('hidden');setTool('select');state.textSelectMode=false;document.body.classList.remove('text-select');const existing=signatureDataUrl;identityCtx.clearRect(0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);identityName.value=userName||'';identityHasInk=!!existing;if(existing){const img=new Image();img.onload=()=>{identityCtx.clearRect(0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);identityCtx.drawImage(img,0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);};img.src=existing;}requestAnimationFrame(()=>identityName.focus());}
+function closeIdentityModal(){identityModal.classList.add('hidden');pendingTool=null;setTool('select');}
+identityCtx.lineCap='round';identityCtx.lineJoin='round';identityCtx.lineWidth=2;identityCtx.strokeStyle='#111';let identityDrawing=false;
+identitySignatureCanvas.addEventListener('pointerdown',e=>{e.preventDefault();identityDrawing=true;identitySignatureCanvas.setPointerCapture(e.pointerId);identityCtx.beginPath();identityCtx.moveTo(e.offsetX,e.offsetY);identityHasInk=true;});
+identitySignatureCanvas.addEventListener('pointermove',e=>{if(!identityDrawing) return;e.preventDefault();identityCtx.lineTo(e.offsetX,e.offsetY);identityCtx.stroke();});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>identitySignatureCanvas.addEventListener(ev,e=>{if(identitySignatureCanvas.hasPointerCapture?.(e.pointerId)){identitySignatureCanvas.releasePointerCapture(e.pointerId);}identityDrawing=false;}));
+identityClear?.addEventListener('click',()=>{identityCtx.clearRect(0,0,identitySignatureCanvas.width,identitySignatureCanvas.height);identityHasInk=false;signatureDataUrl=null;localStorage.removeItem('userSignature');});
+identityClose?.addEventListener('click',closeIdentityModal);
+ identitySave?.addEventListener('click',()=>{const name=identityName.value.trim();if(!name){identityName.focus();return;}userName=name;localStorage.setItem('userName',userName);localStorage.removeItem('commentAuthor');signatureDataUrl=identityHasInk?identitySignatureCanvas.toDataURL('image/png'):null;identityHasInk=!!signatureDataUrl;if(signatureDataUrl){localStorage.setItem('userSignature',signatureDataUrl);}else{localStorage.removeItem('userSignature');}updateIdentityDisplay();updateToolbarStates();closeIdentityModal();const next=pendingTool;pendingTool=null;if(next==='signatureOnce'&&!signatureDataUrl){setTool('select');}else if(next){setTool(next);}});
+identityModal.addEventListener('click',e=>{if(e.target===identityModal) closeIdentityModal();});
+let identityHasInk=!!signatureDataUrl;
+helpBtn?.addEventListener('click',()=>{helpModal.classList.remove('hidden');requestAnimationFrame(()=>helpClose?.focus());});
+helpClose?.addEventListener('click',()=>helpModal.classList.add('hidden'));
+helpModal?.addEventListener('click',e=>{if(e.target===helpModal) helpModal.classList.add('hidden');});
+function parsePdfCommentThread(contents,fallbackAuthor){const normalized=(contents||'').replace(/\r\n/g,'\n').trim();if(!normalized){return [];}const blocks=normalized.split(/\n\s*\n/);const thread=[];for(const block of blocks){const lines=block.split('\n');if(!lines.length) continue;const header=(lines.shift()||'').trim();let author=fallbackAuthor||'Comment';let time='';let text=lines.join('\n').trim();const match=header.match(/^(.*?)\s*(?:\(([^)]*)\))?:\s*$/);if(match){if(match[1]&&match[1].trim()) author=match[1].trim();if(match[2]) time=match[2].trim();}else{text=[header,text].filter(Boolean).join('\n').trim();}thread.push({id:nextThreadItemId++,author,text,time,replyTo:null});}if(!thread.length){thread.push({id:nextThreadItemId++,author:fallbackAuthor||'Comment',text:normalized,time:'',replyTo:null});}return thread;}
+async function importPdfComments(){if(!state.pdfDoc) return;const pageCount=state.pdfDoc.numPages;for(let pageNum=1;pageNum<=pageCount;pageNum++){const page=await state.pdfDoc.getPage(pageNum);const viewport=page.getViewport({scale:1});const pageHeight=viewport.height;const annots=await page.getAnnotations({intent:'display'});if(!Array.isArray(annots)||!annots.length) continue;for(const annot of annots){const subtype=annot.subtype||annot.subType||annot.annotationType;if(subtype!=='Text') continue;if(!Array.isArray(annot.rect)||annot.rect.length<4) continue;const rect=annot.rect.map(v=>typeof v==='number'?v:parseFloat(v)).filter(v=>!Number.isNaN(v));if(rect.length<4) continue;const left=Math.min(rect[0],rect[2]);const top=Math.max(rect[1],rect[3]);const pageY=pageHeight-top;const thread=parsePdfCommentThread(annot.contents||annot.content||'',annot.title||annot.t);if(!thread.length) continue;const anno={id:nextAnnoId++,type:'comment',page:pageNum,pageX:left-COMMENT_PIN_SIZE/2,pageY:pageY-COMMENT_PIN_SIZE/2,thread,meta:{nm:annot.id||annot.name||null,imported:true}};const pageState=state.pageStates[pageNum-1];if(pageState){clampAnnotationBounds(anno,pageState);}ensureArrayForPage(pageNum).push(anno);}page.cleanup?.();}}
+function rehydrateAnnotations(){state.annotations.forEach((list,pageKey)=>{const pageNum=parseInt(pageKey,10);const pageState=state.pageStates[pageNum-1];if(!pageState) return;list.forEach(anno=>{if(anno.dom&&anno.dom.parentElement){anno.dom.parentElement.removeChild(anno.dom);}const el=createAnnotationElement(pageState,anno);anno.dom=el;applyAnnotationPosition(anno,pageState);});});}
+async function setupDocumentStructure(){const count=state.pdfDoc.numPages;state.pageStates=[];for(let i=1;i<=count;i++){const page=await state.pdfDoc.getPage(i);const viewport=page.getViewport({scale:1});const pageState=createPageState(i,viewport.width,viewport.height);state.pageStates.push(pageState);page.cleanup?.();}}
+async function loadPdfBytesArray(byteSource){clearDocumentState();const data=byteSource instanceof Uint8Array?Uint8Array.from(byteSource):new Uint8Array(byteSource);state.pdfBytes=data;const loading=pdfjsLib.getDocument({data});state.pdfDoc=await loading.promise;await setupDocumentStructure();state.annotations=new Map();await importPdfComments();rehydrateAnnotations();state.currentScale=1;state.fitWidthMode=false;state.readerMode=false;state.readerPrevScale=1;state.currentPageIndex=0;state.textSelectMode=false;document.body.classList.remove('text-select');updateAllPageLayouts();updateTextLayerSelectable();applyReaderLayout();updateIdentityDisplay();updateToolbarStates();updatePageInfo();setTool('select');closeCommentUI();setupIntersectionObserver();mainEl.scrollTop=0;mainEl.scrollLeft=0;rerenderVisiblePages();if(state.pageStates[0]) queueRender(state.pageStates[0]);}
+fileInput?.addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file) return;const buf=await file.arrayBuffer();await loadPdfBytesArray(new Uint8Array(buf));e.target.value='';});
+function getFontKey(styles){const bold=(styles.fontWeight||'normal').toLowerCase()==='bold';const italic=(styles.fontStyle||'normal').toLowerCase()==='italic';if(bold&&italic) return 'bolditalic';if(bold) return 'bold';if(italic) return 'italic';return 'normal';}
+async function resolveFont(doc,family,styles,fontCache){const fam=family&&FONT_FACE_MAP[family]?family:'Helvetica';const key=`${fam}:${getFontKey(styles)}`;if(fontCache.has(key)) return fontCache.get(key);const faceName=FONT_FACE_MAP[fam][getFontKey(styles)];const font=await doc.embedFont(faceName);fontCache.set(key,font);return font;}
+function wrapTextLines(font,text,size,maxWidth){const normalized=(text||'').replace(/\r\n/g,'\n');const paragraphs=normalized.split('\n');const lines=[];const limit=Math.max(maxWidth, size*2);for(const para of paragraphs){const tokens=(para.match(/(\S+|\s+)/g)||['']).slice();let line='';let width=0;for(const token of tokens){const tokenWidth=font.widthOfTextAtSize(token,size);if(line===''&&token.trim()===''){continue;}if(width+tokenWidth<=limit||line===''){line+=token;width+=tokenWidth;}else{lines.push(line.replace(/\s+$/,''));line=token.trimStart();width=font.widthOfTextAtSize(line,size);} }lines.push(line.replace(/\s+$/,''));}if(lines.length===0) lines.push('');return lines;}
+function serializeCommentThread(anno){return (anno.thread||[]).map(item=>{const header=`${item.author||'User'}${item.time?` (${item.time})`:''}:`;const body=item.replyTo?`\n↳ ${item.text||''}`:`\n${item.text||''}`;return `${header}${body}`;}).join('\n\n');}
+saveBtn?.addEventListener('click',async()=>{if(!state.pdfDoc||!state.pdfBytes){alert('Open a PDF first.');return;}try{const doc=await PDFLib.PDFDocument.load(state.pdfBytes);const pages=doc.getPages();const fontCache=new Map();state.annotations.forEach((list,pageKey)=>{list.sort((a,b)=>a.id-b.id);});for(const [pageKey,list] of state.annotations.entries()){const pageNum=parseInt(pageKey,10);const page=pages[pageNum-1];if(!page) continue;const pageHeight=page.getHeight();for(const anno of list){if(anno.type==='text'){if(!anno.content||!anno.content.trim()) continue;const styles=anno.styles||{};const font=await resolveFont(doc,styles.fontFamily,fontCache);const size=parseFloat(styles.fontSize||'12')||12;const color=toRgb(styles.color||'#000000');const maxWidth=Math.max(12,anno.width||inferAnnotationWidth(anno));const lines=wrapTextLines(font,anno.content,size,maxWidth);let y=pageHeight-anno.pageY-size;const lineHeight=size*1.25;for(const line of lines){page.drawText(line,{x:anno.pageX,y,size,font,color:PDFLib.rgb(color.r,color.g,color.b)});y-=lineHeight;}}else if(anno.type==='signature'&&anno.dataUrl){const img=await doc.embedPng(anno.dataUrl);const width=anno.width||200;const height=anno.height||80;const x=anno.pageX;const y=pageHeight-anno.pageY-height;page.drawImage(img,{x,y,width,height});}}}
+const N=PDFLib.PDFName,S=PDFLib.PDFString,Num=PDFLib.PDFNumber,PDFArray=PDFLib.PDFArray;
+const commentState=new Map();state.annotations.forEach((list,pageKey)=>{const pageNum=parseInt(pageKey,10);list.forEach(anno=>{if(anno.type!=='comment'||!(anno.thread||[]).length) return;const nm=(anno.meta&&anno.meta.nm)||`modernpdf-comment-${anno.id}`;anno.meta=Object.assign({},anno.meta,{nm});commentState.set(nm,{anno,pageIndex:pageNum-1});});});
+pages.forEach((page,pageIndex)=>{const annotsObj=page.node.get(N.of('Annots'));if(!annotsObj) return;let arr=annotsObj instanceof PDFLib.PDFRef?doc.context.lookup(annotsObj):annotsObj;if(!(arr instanceof PDFArray)) return;const updated=PDFArray.withContext(doc.context);for(let i=0;i<arr.size;i++){const ref=arr.get(i);const annot=doc.context.lookup(ref);if(!annot) continue;const subtype=annot.get(N.of('Subtype'));const isText=subtype&&subtype.toString&&subtype.toString()==='/Text';if(!isText){updated.push(ref);continue;}let nmValue='';const nmEntry=annot.get(N.of('NM'));if(nmEntry){if(nmEntry.decodeText) nmValue=nmEntry.decodeText();else if(typeof nmEntry.value==='string') nmValue=nmEntry.value;else nmValue=nmEntry.toString?.()||'';}let matchedKey=null;if(commentState.has(nmValue)){matchedKey=nmValue;}else{const rectObj=annot.get(N.of('Rect'));if(rectObj instanceof PDFArray){const rectVals=[];for(let r=0;r<rectObj.size;r++){const val=rectObj.get(r);rectVals.push(val?.value??val?.number??parseFloat(val));}if(rectVals.length>=4){const existingX=(rectVals[0]+rectVals[2])/2;const existingY=(rectVals[1]+rectVals[3])/2;for(const [key,value] of commentState.entries()){if(value.pageIndex!==pageIndex) continue;const cand=value.anno;const candX=cand.pageX+COMMENT_PIN_SIZE/2;const candY=page.getHeight()- (cand.pageY+COMMENT_PIN_SIZE/2);if(Math.abs(existingX-candX)<=6&&Math.abs(existingY-candY)<=6){matchedKey=key;break;}}}}}
+if(matchedKey){const {anno}=commentState.get(matchedKey);annot.set(N.of('Contents'),S.of(serializeCommentThread(anno)));annot.set(N.of('T'),S.of(anno.thread[0]?.author||userName||''));if(!nmValue&&matchedKey){annot.set(N.of('NM'),S.of(matchedKey));anno.meta.nm=matchedKey;}updated.push(ref);commentState.delete(matchedKey);}else if(nmValue.startsWith('modernpdf-comment-')){continue;}else{updated.push(ref);}}
+if(updated.size>0){page.node.set(N.of('Annots'),updated);}else{page.node.delete(N.of('Annots'));}});
+for(const [nm,{anno,pageIndex}] of commentState.entries()){const page=pages[pageIndex];if(!page) continue;const pageHeight=page.getHeight();const centerX=anno.pageX+COMMENT_PIN_SIZE/2;const centerY=anno.pageY+COMMENT_PIN_SIZE/2;const rect=PDFArray.withContext(doc.context);rect.push(Num.of(centerX-12));rect.push(Num.of(pageHeight-centerY-12));rect.push(Num.of(centerX+12));rect.push(Num.of(pageHeight-centerY+12));const annot=doc.context.obj({Type:N.of('Annot'),Subtype:N.of('Text'),Rect:rect,Contents:S.of(serializeCommentThread(anno)),T:S.of(anno.thread[0]?.author||userName||''),C:doc.context.obj([Num.of(1),Num.of(0.85),Num.of(0.35)]),Name:N.of('Comment'),F:Num.of(4)});if(nm) annot.set(N.of('NM'),S.of(nm));const ref=doc.context.register(annot);let arr=page.node.get(N.of('Annots'));if(arr){arr=arr instanceof PDFLib.PDFRef?doc.context.lookup(arr):arr;if(arr instanceof PDFArray){arr.push(ref);}else{const newArr=PDFArray.withContext(doc.context);newArr.push(ref);page.node.set(N.of('Annots'),newArr);}}else{const newArr=PDFArray.withContext(doc.context);newArr.push(ref);page.node.set(N.of('Annots'),newArr);}}
+const out=await doc.save();state.pdfBytes=out instanceof Uint8Array?out:new Uint8Array(out);const blob=new Blob([state.pdfBytes],{type:'application/pdf'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='annotated.pdf';a.click();URL.revokeObjectURL(url);
+alert('PDF saved with annotations.');
+}catch(err){console.error(err);alert('Save failed: '+err.message);}}
+);
+async function fetchPdfBytes(url){try{const res=await fetch(url,{mode:'cors'});if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);const buf=await res.arrayBuffer();return new Uint8Array(buf);}catch(err){if(window.chrome?.runtime?.id){try{const response=await chrome.runtime.sendMessage({type:'fetchPdf',url});if(response&&response.ok&&Array.isArray(response.data)){return new Uint8Array(response.data);}if(response&&response.error) throw new Error(response.error);}catch(extErr){throw extErr;}}throw err;}}
+(async()=>{const params=new URLSearchParams(location.search);const src=params.get('src');if(!src) return;try{const bytes=await fetchPdfBytes(src);await loadPdfBytesArray(bytes);}catch(err){console.error('Remote PDF load failed',err);alert('Unable to load PDF from the provided URL. Download it locally or use a link with CORS enabled, then open it via the folder button.');}})();
 updateIdentityDisplay();
 updateToolbarStates();
-updateAnnotationVisibility();
-
-/* ----------------- Load via ?src= ----------------- */
-(function(){
-  const u = new URL(location.href);
-  const src = u.searchParams.get('src');
-  if(!src) return;
-  fetch(src).then(r=>r.arrayBuffer()).then(async(buf)=>{
-    await loadPdfBytesArray(new Uint8Array(buf));
-  }).catch(console.error);
-})();
-
+updatePageInfo();
+setTool('select');
+updateTextLayerSelectable();
 </script>
 </body>
 </html>
