@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ModernPDF Annotator",
+  "version": "1.0.0",
+  "description": "Replaces the built-in PDF viewer so you can annotate PDFs with ModernPDF in the browser.",
+  "action": {
+    "default_title": "Open ModernPDF"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pdf.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
