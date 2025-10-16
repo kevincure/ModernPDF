@@ -23,28 +23,42 @@
   --bg-color:#fffff8;
   --text-color:#1a1a1a;
   --border-color:#d4d4d4;
+  --editor-accent-color:#111111;
+  --editor-accent-text-color:#ffffff;
+  --editor-ui-font-family:var(--font-sans);
+  --toolbar-width:152px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-color);min-height:100vh;overflow:hidden}
 /* Left header column */
 .header{
-  position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,52px);grid-auto-rows:min-content;gap:8px 10px;width:auto;justify-items:center;
+  position:fixed;top:2rem;left:0;z-index:50;padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:min-content;gap:8px 10px;width:var(--toolbar-width);justify-items:stretch;
 }
 .reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);transition:opacity .2s ease,transform .25s ease;}
 .toolbar-sep{grid-column:1/span 2;height:16px}
 .span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;width:100%}
 .hamburger-btn,.icon-btn,.nav-btn{
-  background:#111;
-  color:#fff;
-  border:1px solid #000;
-  cursor:pointer;border-radius:4px;box-shadow:0 3px 6px rgba(0,0,0,.35);
-  transition:background .2s,color .2s,box-shadow .2s,width .2s;
-  width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1rem;
+  padding:6px 12px;
+  background:var(--editor-accent-color);
+  font-family:var(--editor-ui-font-family);
+  font-size:15px;
+  color:var(--editor-accent-text-color);
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+  transition:background-color .2s ease,box-shadow .2s ease,color .2s ease;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:44px;
+  width:100%;
+  box-shadow:0 3px 6px rgba(0,0,0,.35);
+  line-height:1;
 }
 .nav-btn.span-2{width:100%;}
 .hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#1f1f1f;box-shadow:0 4px 10px rgba(0,0,0,.4)}
 .nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.45);border-color:#1d4ed8;}
-.icon-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
+.icon-btn i,.nav-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
 .icon-btn img{pointer-events:none;width:26px;height:26px;display:block;}
 .nav-btn.needs-file{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 10px rgba(37,99,235,.45);}
 #toggleReaderBtn i{margin:0 auto;font-size:1.4em;}
@@ -54,7 +68,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 
 /* ====== Viewer area ====== */
 .app{display:flex;height:100vh;width:100vw}
-.main{flex:1;overflow:auto;padding:24px 24px 48px 84px; /* left pad for toolbar */}
+.main{flex:1;overflow:auto;padding:24px 24px 48px calc(var(--toolbar-width) + 28px); /* left pad for toolbar */}
 .reader .main{padding:16px 24px 32px 24px}
 #pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px}
 .page{position:relative;box-shadow:0 2px 8px rgba(0,0,0,.1);background:#fff}
@@ -106,9 +120,10 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 #file{display:none}
 
 @media (max-width: 800px){
-  .main{padding-left:72px}
-  .header{grid-template-columns:repeat(2,46px);}
-  .hamburger-btn,.icon-btn,.nav-btn{width:38px;height:38px}
+  :root{ --toolbar-width:132px; }
+  .main{padding-left:max(64px, calc(var(--toolbar-width) - 24px));}
+  .header{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .hamburger-btn,.icon-btn,.nav-btn{min-height:38px;font-size:14px;padding:6px 10px;}
 }
 
 .hidden{display:none !important;}
@@ -178,11 +193,11 @@ body.annotations-hidden .floating-panel{display:none !important;}
   <div class="header" id="leftBar">
     <!-- Open/Save -->
     <button class="nav-btn icon-btn" id="openBtn" title="Open PDF">
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2NCA2NCc+PHJlY3Qgd2lkdGg9JzY0JyBoZWlnaHQ9JzY0JyByeD0nMTAnIGZpbGw9JyMyZjJmMmYnLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMTQgMjJoMTZsNSA3aDIxYTQgNCAwIDAgMSA0IDR2MTlhNCA0IDAgMCAxLTQgNEgxNGE0IDQgMCAwIDEtNC00VjI2YTQgNCAwIDAgMSA0LTR6Jy8+PHBhdGggZmlsbD0nI2ZmZmZmZicgZD0nTTMwIDEybDEwIDEwaC02djE0aC04VjIyaC02eicvPjwvc3ZnPg==" alt="Open icon"/>
+      <i class="fa-solid fa-folder-open"></i>
     </button>
     <input id="file" type="file" accept="application/pdf"/>
     <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF (with comments/text/signatures)" disabled>
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2NCA2NCc+PHJlY3Qgd2lkdGg9JzY0JyBoZWlnaHQ9JzY0JyByeD0nMTAnIGZpbGw9JyMyZjJmMmYnLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMTQgMTRoMzZhNCA0IDAgMCAxIDQgNHYxNmgtOFYyMkgxOHYzMGgxMHYtOGg4djhoMTB2LThoOHYxMGE0IDQgMCAwIDEtNCA0SDE0YTQgNCAwIDAgMS00LTRWMThhNCA0IDAgMCAxIDQtNHonLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMzIgMTJsMTIgMTJoLTh2MTZoLThWMjRoLTh6Jy8+PC9zdmc+" alt="Save icon"/>
+      <i class="fa-solid fa-download"></i>
     </button>
     <div class="toolbar-sep" aria-hidden="true"></div>
     <button class="nav-btn icon-btn" id="identityBtn" title="Set name & signature">
@@ -354,6 +369,7 @@ let userName = localStorage.getItem('userName') || localStorage.getItem('comment
 let pendingTool = null;
 let identityHasInk = !!signatureDataUrl;
 let resizeTimer = null;
+let selectedAnnoEl = null;
 
 /* ----------------- DOM ----------------- */
 const el = (id)=>document.getElementById(id);
@@ -464,6 +480,36 @@ function updateAnnotationVisibility(){
     closeCommentUI();
   }
 }
+function setSelectedAnnotation(el){
+  if(selectedAnnoEl && selectedAnnoEl!==el){
+    selectedAnnoEl.classList.remove('selected');
+  }
+  selectedAnnoEl = el || null;
+  if(selectedAnnoEl){
+    selectedAnnoEl.classList.add('selected');
+  }
+}
+function removeAnnotationFromState(anno){
+  if(!anno) return;
+  const pageKey = String(anno.page);
+  const list = annotations[pageKey];
+  if(!Array.isArray(list)) return;
+  const idx = list.indexOf(anno);
+  if(idx>=0) list.splice(idx,1);
+  if(!list.length){
+    delete annotations[pageKey];
+  }
+}
+function removeAnnotationElement(el, anno){
+  if(!el) return;
+  if(anno) removeAnnotationFromState(anno);
+  if(el.parentElement) el.parentElement.removeChild(el);
+  if(selectedAnnoEl===el) setSelectedAnnotation(null);
+  if(anno?.type==='text') hideTextToolbar();
+  if(anno?.type==='comment' && openCommentTarget && openCommentTarget.anno===anno){
+    closeCommentUI();
+  }
+}
 function inchToPx(v){return v*96;}
 function toRgb(hex){const r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,b=parseInt(hex.substr(5,2),16)/255;return {r,g,b};}
 function ensurePageSlot(num){
@@ -513,6 +559,8 @@ async function renderAll(){
   if(!pdfDoc) return;
   const keep = readerMode ? 0 : anchorScrollBefore();
   pagesEl.innerHTML=''; pages.length=0;
+  setSelectedAnnotation(null);
+  hideTextToolbar();
   for(let i=1;i<=pdfDoc.numPages;i++) await renderPage(i);
   if(!readerMode) restoreScroll(keep);
   rehydrateAnnotations();
@@ -587,9 +635,10 @@ async function importPdfComments(){
       const y = pageHeight - top;
       const thread = parsePdfCommentThread(annot.contents || annot.content || '', annot.title || annot.t);
       if(!thread.length) continue;
-      const anno = { id: maxId++, type:'comment', x, y, thread };
-      if(!annotations[pageNum]) annotations[pageNum]=[];
-      annotations[pageNum].push(anno);
+      const anno = { id: maxId++, type:'comment', page: pageNum, x, y, thread };
+      const key = String(pageNum);
+      if(!annotations[key]) annotations[key]=[];
+      annotations[key].push(anno);
     }
   }
   nextAnnoId = maxId;
@@ -606,6 +655,7 @@ async function loadPdfBytesArray(byteSource){
   nextAnnoId = 1;
   await importPdfComments();
   currentScale = 1; fitWidthMode=false; readerMode=false; readerPrevScale = 1; currentPageIndex=0;
+  setSelectedAnnotation(null);
   await renderAll();
   setTool('select');
   hideTextToolbar();
@@ -796,16 +846,16 @@ function attachLayerEvents(layer, pageNum){
     const rect = layer.getBoundingClientRect();
     const x = e.clientX - rect.left; const y = e.clientY - rect.top;
     if(currentTool==='textOnce'){
-      const anno = { id: nextAnnoId++, type:'text', x, y, content:'', styles:{fontFamily:'Helvetica',fontSize:'12',fontWeight:'normal',fontStyle:'normal',color:'#000000'} };
+      const anno = { id: nextAnnoId++, type:'text', page: pageNum, x, y, content:'', styles:{fontFamily:'Helvetica',fontSize:'12',fontWeight:'normal',fontStyle:'normal',color:'#000000'} };
       addAnnotationElement(layer, pageNum, anno, {addToState:true, focus:true});
       setTool('select'); // one-shot
     } else if(currentTool==='commentOnce'){
-      const anno = { id: nextAnnoId++, type:'comment', x, y, thread:[] };
+      const anno = { id: nextAnnoId++, type:'comment', page: pageNum, x, y, thread:[] };
       addAnnotationElement(layer, pageNum, anno, {addToState:true});
       openCommentUI(pageNum, anno);
       setTool('select');
     } else if(currentTool==='signatureOnce' && signatureDataUrl){
-      const anno = { id: nextAnnoId++, type:'signature', x, y, w:200, h:80, dataUrl: signatureDataUrl };
+      const anno = { id: nextAnnoId++, type:'signature', page: pageNum, x, y, w:200, h:80, dataUrl: signatureDataUrl };
       addAnnotationElement(layer, pageNum, anno, {addToState:true});
       setTool('select');
     }
@@ -816,12 +866,19 @@ function attachLayerEvents(layer, pageNum){
 function addAnnotationElement(layer, pageNum, anno, opts){
   const options = typeof opts==='boolean' ? {addToState: opts} : (opts || {});
   const { addToState=false, focus=false } = options;
+  const pageKey = String(pageNum);
+  anno.page = pageNum;
   if(addToState){
-    if(!annotations[pageNum]) annotations[pageNum]=[];
-    annotations[pageNum].push(anno);
+    if(!annotations[pageKey]) annotations[pageKey]=[];
+    annotations[pageKey].push(anno);
   }
   if(anno.type==='text'){
-    const div = document.createElement('div'); div.className='text-anno'; div.contentEditable=true; div.dataset.id=anno.id;
+    const div = document.createElement('div');
+    div.className='text-anno';
+    div.contentEditable=true;
+    div.dataset.id=anno.id;
+    div.dataset.page=pageKey;
+    div._anno = anno;
     div.style.left = anno.x+'px'; div.style.top = anno.y+'px'; div.style.minWidth='120px'; div.style.minHeight='24px';
     div.style.fontFamily = anno.styles.fontFamily; div.style.fontSize = (parseInt(anno.styles.fontSize,10)||12)+'px';
     div.style.fontWeight = anno.styles.fontWeight; div.style.fontStyle=anno.styles.fontStyle; div.style.color = anno.styles.color||'#000';
@@ -834,8 +891,21 @@ function addAnnotationElement(layer, pageNum, anno, opts){
         positionTextToolbar(div);
       }
     });
-    div.addEventListener('focus',()=>showTextToolbar(div, anno));
-    div.addEventListener('click',()=>showTextToolbar(div, anno));
+    div.addEventListener('focus',()=>{
+      setSelectedAnnotation(div);
+      showTextToolbar(div, anno);
+    });
+    div.addEventListener('click',()=>{
+      if(document.activeElement!==div) div.focus();
+      setSelectedAnnotation(div);
+      showTextToolbar(div, anno);
+    });
+    div.addEventListener('blur',()=>{
+      if(selectedAnnoEl===div) setSelectedAnnotation(null);
+      if(!div.textContent.trim()){
+        removeAnnotationElement(div, anno);
+      }
+    });
     makeDraggable(div, anno, layer);
     layer.appendChild(div);
     if(focus){
@@ -843,13 +913,13 @@ function addAnnotationElement(layer, pageNum, anno, opts){
       showTextToolbar(div, anno);
     }
   } else if(anno.type==='comment'){
-    const pin = document.createElement('div'); pin.className='comment-pin'; pin.textContent='C'; pin.dataset.id=anno.id;
+    const pin = document.createElement('div'); pin.className='comment-pin'; pin.textContent='C'; pin.dataset.id=anno.id; pin.dataset.page=pageKey; pin._anno = anno;
     pin.style.left = (anno.x-11)+'px'; pin.style.top=(anno.y-11)+'px';
     pin.onclick = (ev)=>{ ev.stopPropagation(); openCommentUI(pageNum, anno); };
     makeDraggable(pin, anno, layer, true);
     layer.appendChild(pin);
   } else if(anno.type==='signature'){
-    const box = document.createElement('div'); box.className='sig-anno'; box.dataset.id=anno.id;
+    const box = document.createElement('div'); box.className='sig-anno'; box.dataset.id=anno.id; box.dataset.page=pageKey; box._anno=anno;
     box.style.left=anno.x+'px'; box.style.top=anno.y+'px';
     const width = parseFloat(anno.w)||200; const height = parseFloat(anno.h)||80;
     anno.w = width; anno.h = height;
@@ -857,8 +927,7 @@ function addAnnotationElement(layer, pageNum, anno, opts){
     const img = document.createElement('img'); img.src=anno.dataUrl; img.draggable=false; box.appendChild(img);
     const handle = document.createElement('div'); handle.className='resize-handle'; box.appendChild(handle);
     box.addEventListener('mousedown',()=>{
-      document.querySelectorAll('.sig-anno').forEach(el=>{ if(el!==box) el.classList.remove('selected'); });
-      box.classList.add('selected');
+      setSelectedAnnotation(box);
     });
     makeDraggable(box, anno, layer);
     makeResizable(box, handle, anno);
@@ -868,18 +937,74 @@ function addAnnotationElement(layer, pageNum, anno, opts){
 
 /* Dragging */
 function makeDraggable(el, anno, layer, isPin=false){
-  let dragging=false,sx=0,sy=0, origL=0,origT=0;
+  const isText = el.classList.contains('text-anno');
+  const isSignature = el.classList.contains('sig-anno');
+  let dragging=false;
+  let dragCandidate=false;
+  let sx=0,sy=0, origL=0,origT=0;
+
+  const updatePosition = (left, top)=>{
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    if(isPin){
+      anno.x = left + 11;
+      anno.y = top + 11;
+    }else{
+      anno.x = left;
+      anno.y = top;
+    }
+    if(isText && textToolbarTarget===el){
+      positionTextToolbar(el);
+    }
+  };
+
   el.addEventListener('mousedown',(e)=>{
-    const isText = el.classList.contains('text-anno');
-    const isSignature = el.classList.contains('sig-anno');
-    if(isText && e.target!==el) return;
-    if(!isText && !isSignature && !isPin && e.target!==el) return;
-    dragging=true; sx=e.clientX; sy=e.clientY; origL=parseFloat(el.style.left); origT=parseFloat(el.style.top);
+    if(e.button && e.button!==0) return;
+    if(isText){
+      dragCandidate = true;
+      sx = e.clientX;
+      sy = e.clientY;
+      origL = parseFloat(el.style.left)||0;
+      origT = parseFloat(el.style.top)||0;
+      return;
+    }
+    if(!isSignature && !isPin && e.target!==el) return;
+    dragging = true;
+    sx = e.clientX;
+    sy = e.clientY;
+    origL = parseFloat(el.style.left)||0;
+    origT = parseFloat(el.style.top)||0;
     e.preventDefault();
     if(isText) hideTextToolbar();
   });
-  window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-sx, dy=e.clientY-sy; el.style.left=(origL+dx)+'px'; el.style.top=(origT+dy)+'px'; if(isPin){ anno.x=parseFloat(el.style.left)+11; anno.y=parseFloat(el.style.top)+11; } else { anno.x=parseFloat(el.style.left); anno.y=parseFloat(el.style.top);} if(el.classList.contains('text-anno')) positionTextToolbar(el); });
-  window.addEventListener('mouseup',()=>dragging=false);
+
+  window.addEventListener('mousemove',(e)=>{
+    if(isText){
+      if(!dragCandidate) return;
+      const dx = e.clientX - sx;
+      const dy = e.clientY - sy;
+      if(!dragging){
+        if(Math.abs(dx)<=3 && Math.abs(dy)<=3) return;
+        dragging = true;
+        hideTextToolbar();
+      }
+      e.preventDefault();
+      updatePosition(origL + dx, origT + dy);
+      return;
+    }
+    if(!dragging) return;
+    const dx = e.clientX - sx;
+    const dy = e.clientY - sy;
+    e.preventDefault();
+    updatePosition(origL + dx, origT + dy);
+  });
+
+  window.addEventListener('mouseup',()=>{
+    if(dragging || dragCandidate){
+      dragging = false;
+      dragCandidate = false;
+    }
+  });
 }
 
 function makeResizable(el, handle, anno){
@@ -894,7 +1019,7 @@ function makeResizable(el, handle, anno){
     startX=e.clientX; startY=e.clientY;
     startW=parseFloat(el.style.width)||anno.w||200;
     startH=parseFloat(el.style.height)||anno.h||80;
-    el.classList.add('selected');
+    setSelectedAnnotation(el);
   });
   window.addEventListener('mousemove',(e)=>{
     if(!resizing) return;
@@ -908,13 +1033,17 @@ function makeResizable(el, handle, anno){
     anno.h=newH;
   });
   window.addEventListener('mouseup',()=>{
-    if(resizing){ resizing=false; el.classList.remove('selected'); }
+    if(resizing){ resizing=false; }
   });
 }
 
 document.addEventListener('mousedown',(e)=>{
-  if(e.target.closest && e.target.closest('.sig-anno')) return;
-  document.querySelectorAll('.sig-anno.selected').forEach(el=>el.classList.remove('selected'));
+  if(e.target.closest && (e.target.closest('.sig-anno') || e.target.closest('.text-anno') || e.target.closest('.comment-pin'))){
+    return;
+  }
+  if(selectedAnnoEl){
+    setSelectedAnnotation(null);
+  }
 });
 
 /* ----------------- Comment UI (right sidebar) ----------------- */
@@ -1077,6 +1206,14 @@ if (nextPageBtn) nextPageBtn.onclick = ()=>goToPage(1);
 document.addEventListener('keydown',(e)=>{
   const targetTag = e.target.tagName;
   const editing = e.target.isContentEditable || targetTag==='INPUT' || targetTag==='TEXTAREA' || targetTag==='SELECT';
+  if(e.key==='Delete' && !editing && selectedAnnoEl){
+    const anno = selectedAnnoEl._anno;
+    if(anno){
+      removeAnnotationElement(selectedAnnoEl, anno);
+      e.preventDefault();
+      return;
+    }
+  }
   if(!editing && (e.key==='f' || e.key==='F')){ e.preventDefault(); toggleReader(); return; }
   if(!editing && e.key==='+'){ zoomInBtn.click(); }
   if(!editing && e.key==='-'){ zoomOutBtn.click(); }
