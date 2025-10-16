@@ -5,7 +5,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Lightweight PDF Viewer + Annotator</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-y8ng0mYEbNUN81cUfJoi2QdZV/5z725LLJoPLt114F8nGZ4PlzyBbs6k8ZZrVSu2Ce279b9Ec/WWEDuJePfMwA==" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
 <!-- pdf.js & pdf-lib -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
@@ -33,29 +33,29 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .reader .header{opacity:0;pointer-events:none;transform:translateX(-120%);transition:opacity .2s ease,transform .25s ease;}
 .toolbar-sep{grid-column:1/span 2;height:16px}
 .span-2{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;width:100%}
-.nav-btn.needs-file{background:#2563eb;color:#fff;box-shadow:0 4px 10px rgba(37,99,235,.4)}
 .hamburger-btn,.icon-btn,.nav-btn{
-  background:rgba(255,255,255,0.9);
-  border:1px solid var(--border-color);
-  cursor:pointer;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,.1);
-  transition:all .2s;width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1rem;
+  background:#111;
+  color:#fff;
+  border:1px solid #000;
+  cursor:pointer;border-radius:4px;box-shadow:0 3px 6px rgba(0,0,0,.35);
+  transition:background .2s,color .2s,box-shadow .2s,width .2s;
+  width:44px;height:44px;display:flex;align-items:center;justify-content:center;line-height:1;padding:6px;font-size:1rem;
 }
 .nav-btn.span-2{width:100%;}
-.hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#fff;box-shadow:0 4px 8px rgba(0,0,0,.15)}
-.nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 8px rgba(37,99,235,.35);}
-.icon-btn i{pointer-events:none;font-size:1.3em;line-height:1;}
-#toggleReaderBtn i{margin:0 auto;}
+.hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#1f1f1f;box-shadow:0 4px 10px rgba(0,0,0,.4)}
+.nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.45);border-color:#1d4ed8;}
+.icon-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
+.nav-btn.needs-file{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 10px rgba(37,99,235,.45);}
+#toggleReaderBtn i{margin:0 auto;font-size:1.4em;}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
 /* Tiny info pill */
-.nav-info{background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;text-align:center;font-size:.85rem;font-family:var(--font-sans);color:#666;font-weight:500}
+.nav-info{background:#111;border:1px solid #000;border-radius:4px;padding:4px 8px;text-align:center;font-size:.85rem;font-family:var(--font-sans);color:#f5f5f5;font-weight:500;box-shadow:0 3px 6px rgba(0,0,0,.35)}
 
 /* ====== Viewer area ====== */
 .app{display:flex;height:100vh;width:100vw}
 .main{flex:1;overflow:auto;padding:24px 24px 48px 84px; /* left pad for toolbar */}
-.reader .main{padding-left:32px}
+.reader .main{padding:16px 24px 32px 24px}
 #pages{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px}
-#pages.spread{display:grid;grid-auto-rows:auto;grid-template-columns:repeat(auto-fit,minmax(0,max-content));justify-content:center;align-items:start;gap:16px 32px}
-#pages.spread .page{margin:0}
 .page{position:relative;box-shadow:0 2px 8px rgba(0,0,0,.1);background:#fff}
 .page canvas{display:block;background:#fff}
 .layer{position:absolute;inset:0;pointer-events:auto}
@@ -90,14 +90,14 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .reader .reader-hint{display:block}
 
 /* Page indicator pill */
-#pageInfo{background:rgba(255,255,255,.9);border:1px solid var(--border-color);border-radius:14px;padding:4px 8px;font-size:.75rem;font-family:var(--font-sans);color:#666}
+#pageInfo{background:#111;border:1px solid #000;border-radius:14px;padding:4px 8px;font-size:.75rem;font-family:var(--font-sans);color:#f5f5f5;box-shadow:0 3px 6px rgba(0,0,0,.35)}
 #leftBar #pageInfo{grid-column:span 2;justify-self:stretch;display:flex;align-items:center;justify-content:center;height:44px;}
 #leftBar .span-2{justify-self:stretch}
 
-.nav-btn.primary-btn{background:#2563eb;color:#fff;border-color:#1d4ed8}
+.nav-btn.primary-btn{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 12px rgba(37,99,235,.45);}
 .nav-btn.primary-btn:hover{background:#1d4ed8;color:#fff}
-.nav-btn.ghost-btn{background:#f9fafb;color:#1a1a1a}
-.nav-btn.ghost-btn:hover{background:#fff}
+.nav-btn.ghost-btn{background:#f5f5f5;color:#1a1a1a;border-color:#d4d4d4;box-shadow:0 2px 4px rgba(0,0,0,.1);}
+.nav-btn.ghost-btn:hover{background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.18)}
 
 /* Hidden file input */
 #file{display:none}
@@ -199,9 +199,6 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width">
       <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
     </button>
-    <button class="nav-btn icon-btn" id="toggleSpreadBtn" title="One/Two page view">
-      <i class="fa-solid fa-columns"></i>
-    </button>
     <button class="nav-btn icon-btn span-2" id="toggleReaderBtn" title="Full screen reading (F)">
       <i class="fa-solid fa-maximize"></i>
     </button>
@@ -285,7 +282,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 
 <script>
 /* ----------------- State ----------------- */
-let pdfDoc=null, pdfBytes=null;
+let pdfDoc=null, pdfBytes=null, originalPdfBytes=null;
 let pages = []; // {num, viewportWidth, viewportHeight, canvas, ctx, layer}
 let annotations = {}; // {pageNum: [ {id,type,x,y,content/styles/thread} ]}
 let currentTool = 'select'; // select | textOnce | commentOnce | signatureOnce
@@ -293,16 +290,16 @@ let currentScale = 1; // CSS units
 const ZOOMS = [0.25,0.5,0.75,0.9,1,1.1,1.25,1.5,1.75,2];
 let fitWidthMode = false;
 let readerMode = false;
-let spread2 = false;
 let readerPrevScale = 1;
 let currentPageIndex = 0; // 0-based for paging in reader
 let dpr = window.devicePixelRatio || 1;
-let signatureDataUrl = null;
+const storedSignature = localStorage.getItem('userSignature');
+let signatureDataUrl = storedSignature ? storedSignature : null;
 let nextAnnoId = 1;
 let openCommentTarget = null; // {pageNum, anno}
 let userName = localStorage.getItem('userName') || localStorage.getItem('commentAuthor') || '';
 let pendingTool = null;
-let identityHasInk = false;
+let identityHasInk = !!signatureDataUrl;
 let resizeTimer = null;
 
 /* ----------------- DOM ----------------- */
@@ -320,7 +317,6 @@ const zoomOutBtn = el('zoomOutBtn');
 const zoomInBtn = el('zoomInBtn');
 const fitWidthBtn = el('fitWidthBtn');
 const toggleReaderBtn= el('toggleReaderBtn');
-const toggleSpreadBtn= el('toggleSpreadBtn');
 const prevPageBtn = el('prevPageBtn');
 const nextPageBtn = el('nextPageBtn');
 const pageInfo = el('pageInfo');
@@ -372,10 +368,7 @@ async function computeReaderFitScale(){
   const viewport = page.getViewport({ scale: 1 });
   const {width: availW, height: availH} = getMainContentSize();
   if(availW<=0 || availH<=0) return currentScale;
-  const showingPair = spread2 && (pageNum < pageCount);
-  const spreadGap = showingPair ? 16 : 0;
-  const totalWidth = showingPair ? (viewport.width * 2 + spreadGap) : viewport.width;
-  const scaleX = availW / totalWidth;
+  const scaleX = availW / viewport.width;
   const scaleY = availH / viewport.height;
   const fitScale = Math.min(scaleX, scaleY);
   return clamp(fitScale, ZOOMS[0], ZOOMS[ZOOMS.length-1]);
@@ -395,22 +388,13 @@ function updateToolbarStates(){
   if(openBtn){ openBtn.classList.toggle('needs-file', !pdfDoc); }
   if(saveBtn){ saveBtn.disabled = !pdfDoc; }
   if(toggleReaderBtn){ toggleReaderBtn.classList.toggle('active', readerMode); }
-  if(toggleSpreadBtn){ toggleSpreadBtn.classList.toggle('active', spread2); }
   if(identityBtn){ identityBtn.title = userName ? `Signed in as ${userName}` : 'Set name & signature'; }
-}
-function updateSpreadClass(){
-  pagesEl.classList.toggle('spread', spread2 && !readerMode);
 }
 function updatePageInfo(){
   const pct = Math.round(currentScale*100);
   const pageCount = pdfDoc? pdfDoc.numPages : 1;
   const pageNum = clamp(currentPageIndex+1,1,pageCount);
-  if(readerMode && spread2 && pageCount>1){
-    const second = Math.min(pageNum+1, pageCount);
-    pageInfo.textContent = `${pageNum}-${second} / ${pageCount} · ${pct}%`;
-  }else{
-    pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
-  }
+  pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
 }
 function inchToPx(v){return v*96;}
 function toRgb(hex){const r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,b=parseInt(hex.substr(5,2),16)/255;return {r,g,b};}
@@ -465,7 +449,6 @@ async function renderAll(){
   if(!readerMode) restoreScroll(keep);
   rehydrateAnnotations();
   updatePageInfo();
-  updateSpreadClass();
   applyReaderLayout();
 }
 
@@ -490,19 +473,22 @@ fileInput.onchange = async (e)=>{
   const f=e.target.files[0]; if(!f) return;
   const buf = await f.arrayBuffer();
   pdfBytes = new Uint8Array(buf);
+  originalPdfBytes = Uint8Array.from(pdfBytes);
   const loading = pdfjsLib.getDocument({ data: pdfBytes });
   pdfDoc = await loading.promise;
   annotations = {};
-  currentScale = 1; fitWidthMode=false; readerMode=false; spread2=false; readerPrevScale = 1; currentPageIndex=0;
+  currentScale = 1; fitWidthMode=false; readerMode=false; readerPrevScale = 1; currentPageIndex=0;
   await renderAll();
   setTool('select');
   hideTextToolbar();
   updateToolbarStates();
 };
 saveBtn.onclick = async ()=>{
-  if(!pdfBytes){alert('Open a PDF first.');return;}
+  if(!pdfBytes || !pdfDoc){alert('Open a PDF first.');return;}
   try{
-    const sourceBytes = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
+    const baseBytes = (originalPdfBytes && originalPdfBytes.length) ? originalPdfBytes : pdfBytes;
+    const sourceBytes = baseBytes instanceof Uint8Array ? Uint8Array.from(baseBytes) : new Uint8Array(baseBytes);
+    if(!sourceBytes.length){ throw new Error('No PDF data available'); }
     const doc = await PDFLib.PDFDocument.load(sourceBytes);
     const helv = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     const helvB = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -550,7 +536,8 @@ saveBtn.onclick = async ()=>{
     }
     const out = await doc.save();
     const outBytes = out instanceof Uint8Array ? out : new Uint8Array(out);
-    pdfBytes = new Uint8Array(outBytes);
+    pdfBytes = Uint8Array.from(outBytes);
+    originalPdfBytes = Uint8Array.from(outBytes);
     const blob = new Blob([pdfBytes], {type:'application/pdf'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download='annotated.pdf'; a.click(); URL.revokeObjectURL(url);
@@ -784,7 +771,7 @@ fitWidthBtn.onclick = ()=>{
 /* ----------------- Reader Mode & paging ----------------- */
 function applyReaderLayout(){
   document.body.classList.toggle('reader', readerMode);
-  // In reader mode, show only the current page (or pair), hide others
+  // In reader mode, show only the current page, hide others
   const pc = pdfDoc ? pdfDoc.numPages : 0;
   pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='none'; wrap.style.marginRight=''; });
   if(!pdfDoc) return;
@@ -793,19 +780,9 @@ function applyReaderLayout(){
     pagesEl.querySelectorAll('.page').forEach((wrap)=>{ wrap.style.display='block'; wrap.style.marginRight=''; });
     return;
   }
-  if(!spread2){
-    // single
-    const p = clamp(currentPageIndex+1,1,pc);
-    const wrap = pagesEl.querySelector(`.page[data-page="${p}"]`);
-    if(wrap){ wrap.style.display='block'; }
-  }else{
-    const p1 = clamp(currentPageIndex+1,1,pc);
-    const p2 = clamp(p1+1,1,pc);
-    const w1 = pagesEl.querySelector(`.page[data-page="${p1}"]`);
-    const w2 = pagesEl.querySelector(`.page[data-page="${p2}"]`);
-    if(w1){ w1.style.display='inline-block'; w1.style.marginRight='16px'; }
-    if(w2){ w2.style.display='inline-block'; }
-  }
+  const p = clamp(currentPageIndex+1,1,pc);
+  const wrap = pagesEl.querySelector(`.page[data-page="${p}"]`);
+  if(wrap){ wrap.style.display='block'; }
 }
 async function toggleReader(){
   if(!pdfDoc){ return; }
@@ -814,13 +791,11 @@ async function toggleReader(){
     readerPrevScale = currentScale;
     readerMode = true;
     fitWidthMode = false;
-    if(spread2){
-      currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
-    }
     const fitScale = await computeReaderFitScale();
     currentScale = fitScale;
     await renderAll();
     mainEl.scrollTop = 0;
+    mainEl.scrollLeft = 0;
     closeCommentUI();
     if(document.fullscreenElement==null){
       const req = document.documentElement.requestFullscreen;
@@ -831,12 +806,10 @@ async function toggleReader(){
   }else{
     readerMode = false;
     fitWidthMode = false;
-    if(spread2){
-      updateSpreadClass();
-    }
     currentScale = readerPrevScale || currentScale;
     await renderAll();
     mainEl.scrollTop = 0;
+    mainEl.scrollLeft = 0;
     if(document.fullscreenElement && typeof document.exitFullscreen==='function'){
       document.exitFullscreen().catch?.(()=>{});
     }
@@ -845,36 +818,16 @@ async function toggleReader(){
   updateToolbarStates();
 }
 if(toggleReaderBtn){ toggleReaderBtn.addEventListener('click',()=>{ toggleReader(); }); }
-if(toggleSpreadBtn){
-  toggleSpreadBtn.addEventListener('click', async ()=>{
-    spread2 = !spread2;
-    if(readerMode){
-      if(spread2){
-        currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
-      }
-      const scale = await computeReaderFitScale();
-      currentScale = scale;
-      await renderAll();
-      mainEl.scrollTop = 0;
-    }else{
-      updateSpreadClass();
-    }
-    updateToolbarStates();
-    updatePageInfo();
-  });
-}
 
 /* Page navigation */
 function goToPage(delta){
   if(!pdfDoc) return;
-  const step = (readerMode && spread2) ? delta*2 : delta;
-  currentPageIndex = clamp(currentPageIndex+step,0,pdfDoc.numPages-1);
-  if(readerMode && spread2){
-    currentPageIndex = Math.max(0, currentPageIndex - (currentPageIndex % 2));
-  }
+  const pageCount = pdfDoc.numPages;
+  currentPageIndex = clamp(currentPageIndex+delta,0,pageCount-1);
   if(readerMode){
     applyReaderLayout();
     mainEl.scrollTop = 0;
+    mainEl.scrollLeft = 0;
   }else{
     const target = pagesEl.querySelector(`.page[data-page="${currentPageIndex+1}"]`);
     if(target){
@@ -1071,6 +1024,11 @@ identitySave.onclick = ()=>{
   localStorage.setItem('userName', userName);
   localStorage.removeItem('commentAuthor');
   signatureDataUrl = identityHasInk ? identitySignatureCanvas.toDataURL('image/png') : null;
+  if(signatureDataUrl){
+    localStorage.setItem('userSignature', signatureDataUrl);
+  }else{
+    localStorage.removeItem('userSignature');
+  }
   updateIdentityDisplay();
   updateToolbarStates();
   identityModal.classList.add('hidden');
@@ -1101,6 +1059,7 @@ updateToolbarStates();
   if(!src) return;
   fetch(src).then(r=>r.arrayBuffer()).then(async(buf)=>{
     pdfBytes = new Uint8Array(buf);
+    originalPdfBytes = Uint8Array.from(pdfBytes);
     const loading = pdfjsLib.getDocument({ data: pdfBytes });
     pdfDoc = await loading.promise;
     await renderAll();
