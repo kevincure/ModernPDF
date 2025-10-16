@@ -154,6 +154,19 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .cs-author-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-family:var(--font-sans);font-size:.85rem;color:#444}
 .cs-author-line strong{color:#2563eb}
 .cs-author-line .mini-btn{min-width:32px;height:32px;font-size:1rem}
+
+.help-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:140;}
+.help-card{background:#fff;border-radius:12px;box-shadow:0 18px 45px rgba(0,0,0,.35);width:min(92vw,420px);max-height:90vh;display:flex;flex-direction:column;font-family:var(--font-sans);}
+.help-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border-color);}
+.help-header h2{font-size:1.1rem;font-weight:600;color:#1a1a1a;}
+.help-body{padding:18px 20px 22px 20px;overflow:auto;font-size:.9rem;color:#333;display:flex;flex-direction:column;gap:14px;}
+.help-body h3{font-size:.95rem;font-weight:600;margin-bottom:4px;color:#1a1a1a;}
+.help-body ul{padding-left:18px;display:flex;flex-direction:column;gap:6px;}
+.help-body li strong{font-weight:600;color:#1a1a1a;}
+
+body.annotations-hidden .layer{display:none !important;}
+body.annotations-hidden #commentSidebar{right:-380px !important;}
+body.annotations-hidden .floating-panel{display:none !important;}
 </style>
 </head>
 <body>
@@ -199,8 +212,12 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width">
       <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
     </button>
-    <button class="nav-btn icon-btn span-2" id="toggleReaderBtn" title="Full screen reading (F)">
+    <button class="nav-btn icon-btn" id="toggleReaderBtn" title="Full screen reading (F)">
       <i class="fa-solid fa-maximize"></i>
+    </button>
+    <div class="toolbar-sep" aria-hidden="true"></div>
+    <button class="nav-btn icon-btn span-2" id="helpBtn" title="Help & shortcuts">
+      <i class="fa-solid fa-question"></i>
     </button>
   </div>
 
@@ -233,6 +250,37 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
     </div>
   </div>
 </aside>
+
+<!-- Help modal -->
+<div id="helpModal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-card">
+    <header class="help-header">
+      <h2 id="helpTitle">Minimal viewer guide</h2>
+      <button id="helpClose" class="mini-btn" title="Close help"><i class="fa-solid fa-xmark"></i></button>
+    </header>
+    <div class="help-body">
+      <p>This viewer keeps PDF markup simple. Open a file, add lightweight notes, and export.</p>
+      <h3>Workflow</h3>
+      <ul>
+        <li><strong>Open</strong> a PDF, then <strong>Save</strong> to download your annotations.</li>
+        <li>Set your <strong>name & signature</strong> once; it is stored for reuse.</li>
+        <li>Add <strong>text</strong>, <strong>comments</strong>, or <strong>signatures</strong> one at a time — click the page after picking a tool.</li>
+      </ul>
+      <h3>Navigation</h3>
+      <ul>
+        <li><strong>Arrow keys</strong>: Left/Right change pages, Up/Down scroll.</li>
+        <li><strong>Zoom</strong> with +/- buttons. At any zoom other than 100% annotations are hidden to avoid misalignment.</li>
+        <li><strong>Fit width</strong> fills the reading column. <strong>F</strong> toggles full-screen reader mode.</li>
+      </ul>
+      <h3>Tips</h3>
+      <ul>
+        <li>Use the person icon to change your name or redraw your signature.</li>
+        <li>Click outside the comment drawer to collapse it.</li>
+        <li>Return to 100% (or Save) to bring annotations back after zooming.</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 <!-- Floating text style panel -->
 <div id="textStylePanel" class="floating-panel hidden">
@@ -320,6 +368,7 @@ const toggleReaderBtn= el('toggleReaderBtn');
 const prevPageBtn = el('prevPageBtn');
 const nextPageBtn = el('nextPageBtn');
 const pageInfo = el('pageInfo');
+const helpBtn = el('helpBtn');
 const textStylePanel = el('textStylePanel');
 const textFontFamily = el('textFontFamily');
 const textFontSize = el('textFontSize');
@@ -333,6 +382,8 @@ const identityClear = el('identityClear');
 const identitySave = el('identitySave');
 const identitySignatureCanvas = el('identitySignatureCanvas');
 const identityCtx = identitySignatureCanvas.getContext('2d');
+const helpModal = el('helpModal');
+const helpClose = el('helpClose');
 const cs = {
   panel: el('commentSidebar'),
   title: el('csTitle'),
@@ -396,6 +447,18 @@ function updatePageInfo(){
   const pageNum = clamp(currentPageIndex+1,1,pageCount);
   pageInfo.textContent = `${pageNum} / ${pageCount} · ${pct}%`;
 }
+
+function updateAnnotationVisibility(){
+  const hide = readerMode || Math.abs(currentScale-1) > 0.001;
+  document.body.classList.toggle('annotations-hidden', hide);
+  const annoButtons = [textTool, commentTool, signatureTool];
+  annoButtons.forEach(btn=>{ if(btn){ btn.disabled = hide; if(hide) btn.classList.remove('active'); }});
+  if(hide){
+    if(currentTool!=='select'){ setTool('select'); }
+    hideTextToolbar();
+    closeCommentUI();
+  }
+}
 function inchToPx(v){return v*96;}
 function toRgb(hex){const r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,b=parseInt(hex.substr(5,2),16)/255;return {r,g,b};}
 function ensurePageSlot(num){
@@ -450,6 +513,7 @@ async function renderAll(){
   rehydrateAnnotations();
   updatePageInfo();
   applyReaderLayout();
+  updateAnnotationVisibility();
 }
 
 function rehydrateAnnotations(){
@@ -541,6 +605,11 @@ saveBtn.onclick = async ()=>{
     const blob = new Blob([pdfBytes], {type:'application/pdf'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download='annotated.pdf'; a.click(); URL.revokeObjectURL(url);
+    if(Math.abs(currentScale-1) > 0.001){
+      setScale(1);
+    }else{
+      updateAnnotationVisibility();
+    }
   }catch(err){
     alert('Save failed: '+err.message);
     console.error(err);
@@ -590,6 +659,25 @@ function closeIdentityModal(){
   identityModal.classList.add('hidden');
   pendingTool = null;
   setTool('select');
+}
+
+function openHelpModal(){
+  if(helpModal){
+    helpModal.classList.remove('hidden');
+    requestAnimationFrame(()=>{
+      if(helpClose){ helpClose.focus(); }
+    });
+  }
+}
+
+function closeHelpModal(){
+  if(helpModal){ helpModal.classList.add('hidden'); }
+}
+
+if(helpBtn){ helpBtn.onclick = ()=>openHelpModal(); }
+if(helpClose){ helpClose.onclick = ()=>closeHelpModal(); }
+if(helpModal){
+  helpModal.addEventListener('click',(e)=>{ if(e.target===helpModal) closeHelpModal(); });
 }
 
 if(signatureTool){
@@ -744,6 +832,7 @@ document.addEventListener('click',(e)=>{
 /* ----------------- Zoom & layout ----------------- */
 function setScale(scale){
   currentScale = scale; fitWidthMode=false;
+  updateAnnotationVisibility();
   renderAll();
 }
 zoomInBtn.onclick = ()=>{
@@ -760,10 +849,12 @@ fitWidthBtn.onclick = ()=>{
   if(!pdfDoc) return;
   // fit first page width
   pdfDoc.getPage(1).then(page=>{
-    const vw = page.getViewport({scale:1}).width;
-    const target = mainEl.clientWidth - 40; // padding
-    let scale = Math.max(0.25, Math.min(2, target / vw));
+    const viewport = page.getViewport({scale:1});
+    const {width: availWidth} = getMainContentSize();
+    const target = availWidth>0 ? availWidth : mainEl.clientWidth;
+    let scale = Math.max(ZOOMS[0], Math.min(ZOOMS[ZOOMS.length-1], target / viewport.width));
     currentScale = scale; fitWidthMode=true;
+    updateAnnotationVisibility();
     renderAll();
   });
 };
@@ -816,6 +907,7 @@ async function toggleReader(){
   }
   updatePageInfo();
   updateToolbarStates();
+  updateAnnotationVisibility();
 }
 if(toggleReaderBtn){ toggleReaderBtn.addEventListener('click',()=>{ toggleReader(); }); }
 
@@ -856,6 +948,7 @@ document.addEventListener('keydown',(e)=>{
     setTool('select');
     hideTextToolbar();
     if(identityModal && !identityModal.classList.contains('hidden')) closeIdentityModal();
+    if(helpModal && !helpModal.classList.contains('hidden')) closeHelpModal();
   }
   if(readerMode){
     if(!editing && e.key==='ArrowLeft'){ e.preventDefault(); goToPage(-1); }
@@ -1051,6 +1144,7 @@ identityModal.addEventListener('click',(e)=>{
 setTool('select');
 updateIdentityDisplay();
 updateToolbarStates();
+updateAnnotationVisibility();
 
 /* ----------------- Load via ?src= ----------------- */
 (function(){
