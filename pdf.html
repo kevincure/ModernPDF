@@ -45,6 +45,7 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .hamburger-btn:hover,.icon-btn:hover,.nav-btn:hover:not(:disabled){background:#1f1f1f;box-shadow:0 4px 10px rgba(0,0,0,.4)}
 .nav-btn.active{background:#2563eb;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.45);border-color:#1d4ed8;}
 .icon-btn i{pointer-events:none;font-size:1.3em;line-height:1;width:100%;text-align:center;}
+.icon-btn img{pointer-events:none;width:26px;height:26px;display:block;}
 .nav-btn.needs-file{background:#2563eb;color:#fff;border-color:#1d4ed8;box-shadow:0 4px 10px rgba(37,99,235,.45);}
 #toggleReaderBtn i{margin:0 auto;font-size:1.4em;}
 .nav-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -66,8 +67,10 @@ body{font-family:var(--font-serif);background:var(--bg-color);color:var(--text-c
 .text-anno{background:transparent;border:none;min-width:120px;min-height:24px;outline:none;color:#000}
 .text-anno::placeholder{color:#999}
 .text-anno:focus,.text-anno.selected,.sig-anno.selected,.comment-pin.selected{outline:2px solid #2563eb;outline-offset:1px;border-radius:4px}
-.sig-anno{background:transparent;border:none}
+.sig-anno{background:transparent;border:none;display:inline-flex;align-items:stretch;justify-content:stretch;}
 .sig-anno img{display:block;width:100%;height:100%;object-fit:contain}
+.sig-anno .resize-handle{position:absolute;right:-6px;bottom:-6px;width:16px;height:16px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:se-resize;opacity:0;transition:opacity .2s ease;}
+.sig-anno:hover .resize-handle,.sig-anno.selected .resize-handle{opacity:1;}
 .comment-pin{width:22px;height:22px;border-radius:50%;background:#ffd166;border:1px solid #f4a261;display:flex;align-items:center;justify-content:center;font-weight:700;color:#333}
 
 /* Comment sidebar (opens on right) */
@@ -175,11 +178,11 @@ body.annotations-hidden .floating-panel{display:none !important;}
   <div class="header" id="leftBar">
     <!-- Open/Save -->
     <button class="nav-btn icon-btn" id="openBtn" title="Open PDF">
-      <i class="fa-solid fa-folder-open"></i>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2NCA2NCc+PHJlY3Qgd2lkdGg9JzY0JyBoZWlnaHQ9JzY0JyByeD0nMTAnIGZpbGw9JyMyZjJmMmYnLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMTQgMjJoMTZsNSA3aDIxYTQgNCAwIDAgMSA0IDR2MTlhNCA0IDAgMCAxLTQgNEgxNGE0IDQgMCAwIDEtNC00VjI2YTQgNCAwIDAgMSA0LTR6Jy8+PHBhdGggZmlsbD0nI2ZmZmZmZicgZD0nTTMwIDEybDEwIDEwaC02djE0aC04VjIyaC02eicvPjwvc3ZnPg==" alt="Open icon"/>
     </button>
     <input id="file" type="file" accept="application/pdf"/>
     <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF (with comments/text/signatures)" disabled>
-      <i class="fa-solid fa-floppy-disk"></i>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2NCA2NCc+PHJlY3Qgd2lkdGg9JzY0JyBoZWlnaHQ9JzY0JyByeD0nMTAnIGZpbGw9JyMyZjJmMmYnLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMTQgMTRoMzZhNCA0IDAgMCAxIDQgNHYxNmgtOFYyMkgxOHYzMGgxMHYtOGg4djhoMTB2LThoOHYxMGE0IDQgMCAwIDEtNCA0SDE0YTQgNCAwIDAgMS00LTRWMThhNCA0IDAgMCAxIDQtNHonLz48cGF0aCBmaWxsPScjZmZmZmZmJyBkPSdNMzIgMTJsMTIgMTJoLTh2MTZoLThWMjRoLTh6Jy8+PC9zdmc+" alt="Save icon"/>
     </button>
     <div class="toolbar-sep" aria-hidden="true"></div>
     <button class="nav-btn icon-btn" id="identityBtn" title="Set name & signature">
@@ -264,6 +267,7 @@ body.annotations-hidden .floating-panel{display:none !important;}
       <ul>
         <li><strong>Open</strong> a PDF, then <strong>Save</strong> to download your annotations.</li>
         <li>Set your <strong>name & signature</strong> once; it is stored for reuse.</li>
+        <li>Existing PDF text comments load as pins you can continue replying to.</li>
         <li>Add <strong>text</strong>, <strong>comments</strong>, or <strong>signatures</strong> one at a time — click the page after picking a tool.</li>
       </ul>
       <h3>Navigation</h3>
@@ -277,6 +281,7 @@ body.annotations-hidden .floating-panel{display:none !important;}
         <li>Use the person icon to change your name or redraw your signature.</li>
         <li>Click outside the comment drawer to collapse it.</li>
         <li>Return to 100% (or Save) to bring annotations back after zooming.</li>
+        <li>Signatures show a corner handle — drag it to resize without re-drawing.</li>
       </ul>
     </div>
   </div>
@@ -531,21 +536,90 @@ function rehydrateAnnotations(){
   }
 }
 
+function parsePdfCommentThread(contents, fallbackAuthor){
+  const normalized = (contents || '').replace(/\r\n/g,'\n').trim();
+  if(!normalized){
+    return fallbackAuthor ? [{ author: fallbackAuthor, text: '', time: '' }] : [];
+  }
+  const blocks = normalized.split(/\n\s*\n/);
+  const thread = [];
+  for(const block of blocks){
+    const lines = block.split('\n');
+    if(!lines.length) continue;
+    const header = lines.shift().trim();
+    let author = fallbackAuthor || 'Comment';
+    let time = '';
+    let text = lines.join('\n').trim();
+    const match = header.match(/^(.*?)\s*\(([^)]*)\):\s*$/);
+    if(match){
+      author = match[1].trim() || author;
+      time = match[2].trim();
+    }else{
+      text = [header, text].filter(Boolean).join('\n').trim();
+    }
+    thread.push({ author, text, time });
+  }
+  if(!thread.length){
+    thread.push({ author: fallbackAuthor || 'Comment', text: normalized, time: '' });
+  }
+  return thread;
+}
+
+async function importPdfComments(){
+  if(!pdfDoc) return;
+  const pageCount = pdfDoc.numPages;
+  let maxId = nextAnnoId;
+  for(let pageNum=1; pageNum<=pageCount; pageNum++){
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1 });
+    const pageHeight = viewport.height;
+    const annots = await page.getAnnotations({ intent: 'display' });
+    if(!annots || !annots.length) continue;
+    for(const annot of annots){
+      const subtype = annot.subtype || annot.subType || annot.annotationType;
+      if(subtype!=='Text') continue;
+      if(!Array.isArray(annot.rect) || annot.rect.length<4) continue;
+      const rectRaw = annot.rect.map(v=>typeof v==='number'?v:parseFloat(v));
+      if(rectRaw.some(v=>Number.isNaN(v))) continue;
+      const left = Math.min(rectRaw[0], rectRaw[2]);
+      const top = Math.max(rectRaw[1], rectRaw[3]);
+      const x = left;
+      const y = pageHeight - top;
+      const thread = parsePdfCommentThread(annot.contents || annot.content || '', annot.title || annot.t);
+      if(!thread.length) continue;
+      const anno = { id: maxId++, type:'comment', x, y, thread };
+      if(!annotations[pageNum]) annotations[pageNum]=[];
+      annotations[pageNum].push(anno);
+    }
+  }
+  nextAnnoId = maxId;
+}
+
 /* ----------------- Events: open/save ----------------- */
-openBtn.onclick = ()=>fileInput.click();
-fileInput.onchange = async (e)=>{
-  const f=e.target.files[0]; if(!f) return;
-  const buf = await f.arrayBuffer();
-  pdfBytes = new Uint8Array(buf);
-  originalPdfBytes = Uint8Array.from(pdfBytes);
+async function loadPdfBytesArray(byteSource){
+  const data = byteSource instanceof Uint8Array ? Uint8Array.from(byteSource) : new Uint8Array(byteSource);
+  pdfBytes = Uint8Array.from(data);
+  originalPdfBytes = Uint8Array.from(data);
   const loading = pdfjsLib.getDocument({ data: pdfBytes });
   pdfDoc = await loading.promise;
   annotations = {};
+  nextAnnoId = 1;
+  await importPdfComments();
   currentScale = 1; fitWidthMode=false; readerMode=false; readerPrevScale = 1; currentPageIndex=0;
   await renderAll();
   setTool('select');
   hideTextToolbar();
+  closeCommentUI();
   updateToolbarStates();
+  updateAnnotationVisibility();
+}
+
+openBtn.onclick = ()=>fileInput.click();
+fileInput.onchange = async (e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const buf = await f.arrayBuffer();
+  await loadPdfBytesArray(new Uint8Array(buf));
+  e.target.value='';
 };
 saveBtn.onclick = async ()=>{
   if(!pdfBytes || !pdfDoc){alert('Open a PDF first.');return;}
@@ -559,7 +633,7 @@ saveBtn.onclick = async ()=>{
     const times = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
     const cour = await doc.embedFont(PDFLib.StandardFonts.Courier);
 
-    const N=PDFLib.PDFName, S=PDFLib.PDFString, Num=PDFLib.PDFNumber;
+    const N=PDFLib.PDFName, S=PDFLib.PDFString, Num=PDFLib.PDFNumber, PDFArray=PDFLib.PDFArray, PDFRef=PDFLib.PDFRef;
     const addTextAnnot = (page, x,y,w,h, contents, author)=>{
       const rect = doc.context.obj([Num.of(x),Num.of(y),Num.of(x+w),Num.of(y+h)]);
       const annot = doc.context.obj({
@@ -574,6 +648,30 @@ saveBtn.onclick = async ()=>{
     };
 
     const pagesLib = doc.getPages();
+    pagesLib.forEach((page)=>{
+      const annotsObj = page.node.get(N.of('Annots'));
+      if(!annotsObj) return;
+      let arr = annotsObj;
+      if(arr instanceof PDFRef){
+        arr = doc.context.lookup(arr);
+      }
+      if(!(arr instanceof PDFArray)) return;
+      const kept = [];
+      for(let idx=0; idx<arr.size; idx++){
+        const ref = arr.get(idx);
+        const annot = doc.context.lookup(ref);
+        const subtype = annot?.get?.(N.of('Subtype'));
+        const keep = !(subtype && subtype.toString && subtype.toString() === '/Text');
+        if(keep) kept.push(ref);
+      }
+      if(kept.length){
+        const newArr = PDFArray.withContext(doc.context);
+        kept.forEach(ref=>newArr.push(ref));
+        page.node.set(N.of('Annots'), newArr);
+      }else{
+        page.node.delete(N.of('Annots'));
+      }
+    });
     for(const key in annotations){
       const list = annotations[key]; if(!list || !list.length) continue;
       const pIndex = parseInt(key,10)-1;
@@ -752,9 +850,18 @@ function addAnnotationElement(layer, pageNum, anno, opts){
     layer.appendChild(pin);
   } else if(anno.type==='signature'){
     const box = document.createElement('div'); box.className='sig-anno'; box.dataset.id=anno.id;
-    box.style.left=anno.x+'px'; box.style.top=anno.y+'px'; box.style.width=(anno.w||200)+'px'; box.style.height=(anno.h||80)+'px';
-    const img = document.createElement('img'); img.src=anno.dataUrl; box.appendChild(img);
+    box.style.left=anno.x+'px'; box.style.top=anno.y+'px';
+    const width = parseFloat(anno.w)||200; const height = parseFloat(anno.h)||80;
+    anno.w = width; anno.h = height;
+    box.style.width=width+'px'; box.style.height=height+'px';
+    const img = document.createElement('img'); img.src=anno.dataUrl; img.draggable=false; box.appendChild(img);
+    const handle = document.createElement('div'); handle.className='resize-handle'; box.appendChild(handle);
+    box.addEventListener('mousedown',()=>{
+      document.querySelectorAll('.sig-anno').forEach(el=>{ if(el!==box) el.classList.remove('selected'); });
+      box.classList.add('selected');
+    });
     makeDraggable(box, anno, layer);
+    makeResizable(box, handle, anno);
     layer.appendChild(box);
   }
 }
@@ -774,6 +881,41 @@ function makeDraggable(el, anno, layer, isPin=false){
   window.addEventListener('mousemove',(e)=>{ if(!dragging) return; const dx=e.clientX-sx, dy=e.clientY-sy; el.style.left=(origL+dx)+'px'; el.style.top=(origT+dy)+'px'; if(isPin){ anno.x=parseFloat(el.style.left)+11; anno.y=parseFloat(el.style.top)+11; } else { anno.x=parseFloat(el.style.left); anno.y=parseFloat(el.style.top);} if(el.classList.contains('text-anno')) positionTextToolbar(el); });
   window.addEventListener('mouseup',()=>dragging=false);
 }
+
+function makeResizable(el, handle, anno){
+  if(!handle) return;
+  const MIN_W = 60;
+  const MIN_H = 24;
+  let resizing=false,startX=0,startY=0,startW=0,startH=0;
+  handle.addEventListener('mousedown',(e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    resizing=true;
+    startX=e.clientX; startY=e.clientY;
+    startW=parseFloat(el.style.width)||anno.w||200;
+    startH=parseFloat(el.style.height)||anno.h||80;
+    el.classList.add('selected');
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!resizing) return;
+    const dw=e.clientX-startX;
+    const dh=e.clientY-startY;
+    const newW=Math.max(MIN_W, startW+dw);
+    const newH=Math.max(MIN_H, startH+dh);
+    el.style.width=`${newW}px`;
+    el.style.height=`${newH}px`;
+    anno.w=newW;
+    anno.h=newH;
+  });
+  window.addEventListener('mouseup',()=>{
+    if(resizing){ resizing=false; el.classList.remove('selected'); }
+  });
+}
+
+document.addEventListener('mousedown',(e)=>{
+  if(e.target.closest && e.target.closest('.sig-anno')) return;
+  document.querySelectorAll('.sig-anno.selected').forEach(el=>el.classList.remove('selected'));
+});
 
 /* ----------------- Comment UI (right sidebar) ----------------- */
 function openCommentUI(pageNum, anno){
@@ -1152,12 +1294,7 @@ updateAnnotationVisibility();
   const src = u.searchParams.get('src');
   if(!src) return;
   fetch(src).then(r=>r.arrayBuffer()).then(async(buf)=>{
-    pdfBytes = new Uint8Array(buf);
-    originalPdfBytes = Uint8Array.from(pdfBytes);
-    const loading = pdfjsLib.getDocument({ data: pdfBytes });
-    pdfDoc = await loading.promise;
-    await renderAll();
-    updateToolbarStates();
+    await loadPdfBytesArray(new Uint8Array(buf));
   }).catch(console.error);
 })();
 
