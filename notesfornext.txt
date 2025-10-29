@@ -1,0 +1,2 @@
+- Download not working
+- Comment input keeping old comments

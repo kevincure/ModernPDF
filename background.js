@@ -1,4 +1,4 @@
-// Background service worker for PDF interception and loading
+// Background service worker for PDF interception
 const PDF_URL_REGEX = /\.pdf(?:$|[?#])/i;
 const pendingPdfSources = new Map();
 let extensionEnabled = true;
@@ -14,11 +14,6 @@ function isPdfUrl(url) {
   } catch (err) {
     return PDF_URL_REGEX.test(url);
   }
-}
-
-function buildViewerUrl(src) {
-  const viewerBase = chrome.runtime.getURL('viewer.html');
-  return src ? `${viewerBase}?src=${encodeURIComponent(src)}` : viewerBase;
 }
 
 async function fetchPdfBytes(url) {
@@ -37,7 +32,6 @@ async function fetchPdfBytes(url) {
       };
     } catch (err) {
       lastError = err;
-      // Retry network fetches, but bail immediately for file:// failures
       if (url.startsWith('file:')) {
         break;
       }
@@ -66,6 +60,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   pendingPdfSources.delete(tabId);
 });
 
+// Cache PDF URLs when detected
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (!extensionEnabled) return;
   if (details.frameId !== 0) return;
@@ -74,30 +69,22 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   }
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.webNavigation.onCommitted.addListener((details) => {
   if (!extensionEnabled) return;
-  if (changeInfo.status !== 'complete' || !tab.url) return;
-  if (!isPdfUrl(tab.url)) return;
-
-  if (!tab.url.startsWith(chrome.runtime.getURL('viewer.html'))) {
-    cachePdfSource(tabId, tab.url);
-    chrome.tabs.update(tabId, { url: buildViewerUrl(tab.url) });
+  if (details.frameId !== 0) return;
+  if (details.url && isPdfUrl(details.url)) {
+    cachePdfSource(details.tabId, details.url);
   }
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request?.action === 'getPdfUrl') {
     let pdfUrl = null;
-    try {
-      if (sender?.tab?.url) {
-        const currentUrl = new URL(sender.tab.url);
-        pdfUrl = currentUrl.searchParams.get('src');
-      }
-    } catch (err) {
-      // ignore
-    }
-    if (!pdfUrl && sender?.tab?.id) {
+    if (sender?.tab?.id) {
       pdfUrl = getCachedPdfSource(sender.tab.id);
+    }
+    if (!pdfUrl && sender?.tab?.url) {
+      pdfUrl = sender.tab.url;
     }
     sendResponse({ pdfUrl: pdfUrl });
     return false;
@@ -124,22 +111,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request?.action === 'openViewerForUrl') {
-    if (!extensionEnabled) {
-      sendResponse({ success: false, error: 'Extension is currently disabled.' });
-      return false;
-    }
-    const src = request.url;
-    if (!src) {
-      sendResponse({ success: false, error: 'No PDF URL provided.' });
-      return false;
-    }
-    cachePdfSource(sender?.tab?.id, src);
-    chrome.tabs.update(sender.tab.id, { url: buildViewerUrl(src) });
-    sendResponse({ success: true });
-    return false;
-  }
-
   return false;
 });
 
@@ -149,26 +120,14 @@ chrome.action.onClicked.addListener(() => {
   if (extensionEnabled) {
     chrome.action.setBadgeText({ text: 'ON' });
     chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' });
-    chrome.declarativeNetRequest.updateEnabledRulesets({ enableRulesetIds: ['ruleset_1'] });
+    chrome.declarativeNetRequest.updateEnabledRulesets({ 
+      enableRulesetIds: ['ruleset_1'] 
+    });
   } else {
     chrome.action.setBadgeText({ text: 'OFF' });
     chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
-    chrome.declarativeNetRequest.updateEnabledRulesets({ disableRulesetIds: ['ruleset_1'] });
+    chrome.declarativeNetRequest.updateEnabledRulesets({ 
+      disableRulesetIds: ['ruleset_1'] 
+    });
   }
 });
-
-if (chrome.downloads?.onDeterminingFilename) {
-  chrome.downloads.onDeterminingFilename.addListener((downloadItem) => {
-    if (!extensionEnabled) return;
-    if (downloadItem.mime !== 'application/pdf') return;
-
-    chrome.downloads.cancel(downloadItem.id, () => {
-      const sourceUrl = downloadItem.finalUrl || downloadItem.url;
-      cachePdfSource(downloadItem.tabId, sourceUrl);
-      const viewerUrl = buildViewerUrl(sourceUrl);
-      chrome.tabs.create({ url: viewerUrl });
-    });
-  });
-} else {
-  console.warn('Downloads API not available; PDF download interception disabled.');
-}

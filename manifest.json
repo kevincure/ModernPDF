@@ -10,8 +10,6 @@
     "tabs",
     "storage",
     "declarativeNetRequest",
-    "declarativeNetRequestWithHostAccess",
-    "downloads",
     "webNavigation"
   ],
   "host_permissions": [
@@ -26,6 +24,14 @@
       }
     ]
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-inject.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "action": {
     "default_title": "Local PDF Viewer"
   },
@@ -34,7 +40,8 @@
       "resources": [
         "viewer.html",
         "viewer.js",
-        "lib/*"
+        "lib/*",
+        "icons/*.svg"
       ],
       "matches": ["<all_urls>"]
     }

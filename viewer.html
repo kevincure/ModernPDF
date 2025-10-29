@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Modern PDF - Kevin Bryan</title>
 
-  <script src="lib/pdf.min.js"></script>
-  <script src="lib/pdf-lib.min.js"></script>
-  <script src="viewer.js"></script>
-
 <style>
   :root {
     --font-serif: 'Times New Roman', 'Times', serif;
@@ -993,6 +989,40 @@
       outline: none !important;
     }
   }
+
+/* Better SVG icon handling */
+.icon-svg {
+  width: 1.2em;
+  height: 1.2em;
+  fill: currentColor;
+  display: inline-block;
+  vertical-align: middle;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.nav-btn .icon-svg,
+.icon-btn .icon-svg {
+  width: 1.3em;
+  height: 1.3em;
+}
+
+.mini-btn .icon-svg {
+  width: 1em;
+  height: 1em;
+}
+
+.comment-pin .icon-svg {
+  width: 14px;
+  height: 14px;
+  filter: brightness(0) invert(1); /* Make white */
+}
+
+.menu-item .icon-svg {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 8px;
+}
 </style>
 </head>
 
@@ -1005,11 +1035,11 @@
 <div class="header" id="leftBar">
   <button class="hamburger-btn" id="hamburgerBtn">☰</button>
   <button class="nav-btn icon-btn" id="openBtn" title="Open PDF (O)">
-    <i class="fa-solid fa-folder-open"></i>
+    <img src="icons/folder-open.svg" class="icon-svg">
   </button>
   <input id="file" type="file" accept="application/pdf"/>
   <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled>
-    <i class="fa-solid fa-download"></i>
+    <img src="icons/download.svg" class="icon-svg">
   </button>
 
   <div class="toolbar-sep" aria-hidden="true"></div>
@@ -1018,11 +1048,11 @@
     <input type="text" id="searchInput" placeholder="Find..." />
     <div class="search-controls">
       <button class="nav-btn icon-btn" id="searchPrevBtn" title="Previous match" disabled>
-        <i class="fa-solid fa-arrow-up"></i>
+        <img src="icons/arrow-up.svg" class="icon-svg">
       </button>
       <span id="searchStatus" class="nav-info">0 / 0</span>
       <button class="nav-btn icon-btn" id="searchNextBtn" title="Next match" disabled>
-        <i class="fa-solid fa-arrow-down"></i>
+        <img src="icons/arrow-down.svg" class="icon-svg">
       </button>
     </div>
   </div>
@@ -1036,10 +1066,10 @@
 </div>
 
 <div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
-  <button id="zmIn"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom in</button>
-  <button id="zmOut"><i class="fa-solid fa-magnifying-glass-minus"></i> Zoom out</button>
-  <button id="zmFit"><i class="fa-solid fa-left-right"></i> Fit width</button>
-  <button id="zmReader"><i class="fa-solid fa-book-open-reader"></i> Reader mode</button>
+  <button id="zmIn"><img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom in</button>
+  <button id="zmOut"><img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom out</button>
+  <button id="zmFit"><img src="icons/left-right.svg" class="icon-svg"> Fit width</button>
+  <button id="zmReader"><img src="icons/book-open-reader.svg" class="icon-svg">Reader mode</button>
 </div>
 
 <!-- Hamburger Menu -->
@@ -1050,46 +1080,46 @@
   </div>
   <div class="menu-content">
     <button class="menu-item" id="selectTextTool" title="Select text (T)">
-      <i class="fa-solid fa-i-cursor"></i> Select Text
+      <img src="icons/i-cursor.svg" class="icon-svg"> Select Text
     </button>
     <button class="menu-item" id="textTool" title="Add text (A)">
-      <i class="fa-solid fa-font"></i> Add Text
+      <img src="icons/font.svg" class="icon-svg"> Add Text
     </button>
     <button class="menu-item" id="signatureTool" title="Add signature (S)">
-      <i class="fa-solid fa-pen-fancy"></i> Add Signature
+      <img src="icons/pen-fancy.svg" class="icon-svg"> Add Signature
     </button>
     <button class="menu-item" id="commentTool" title="Add comment (C)">
-      <i class="fa-solid fa-comment-dots"></i> Add Comment
+      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment
     </button>
     
     <hr class="menu-divider">
     
     <button class="menu-item" id="zoomOutBtn" title="Zoom out (-)">
-      <i class="fa-solid fa-magnifying-glass-minus"></i> Zoom Out
+      <img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom Out (-)
     </button>
     <button class="menu-item" id="zoomInBtn" title="Zoom in (+)">
-      <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom In
+      <img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom In (+)
     </button>
     <button class="menu-item" id="fitWidthBtn" title="Fit width (W)">
-      <i class="fa-solid fa-left-right"></i> Fit Width
+      <img src="icons/left-right.svg" class="icon-svg"> Fit Width (w)
     </button>
     <button class="menu-item" id="toggleReaderBtn" title="Full screen (F)">
-      <i class="fa-solid fa-maximize"></i> Full Screen
+      <img src="icons/maximize.svg" class="icon-svg"> Full Screen (f)
     </button>
     <button class="menu-item" id="prevPageBtn" title="Previous page">
-      <i class="fa-solid fa-arrow-left"></i> Previous Page
+      <img src="icons/arrow-left.svg" class="icon-svg"> Previous Page
     </button>
     <button class="menu-item" id="nextPageBtn" title="Next page">
-      <i class="fa-solid fa-arrow-right"></i> Next Page
+      <img src="icons/arrow-right.svg" class="icon-svg"> Next Page
     </button>
     
     <hr class="menu-divider">
     
     <button class="menu-item" id="identityBtn" title="Set name & signature">
-      <i class="fa-solid fa-user"></i> Set Identity
+      <img src="icons/user.svg" class="icon-svg"> Set Identity
     </button>
     <button class="menu-item" id="helpBtn" title="Help">
-      <i class="fa-solid fa-question"></i> Help
+      <img src="icons/question.svg" class="icon-svg"> Help
     </button>
   </div>
 </div>
@@ -1099,7 +1129,7 @@
     </div>
   </div>
 
-  <div class="reader-hint">Full screen reading. ←/→ prev/next page · ↑/↓ scroll · E to exit</div>
+  <div class="reader-hint">Full screen reading. ←/→ prev/next page · ↑/↓ scroll · 'r' to exit</div>
 
   <aside id="commentSidebar">
     <div class="cs-thread" id="csThread"></div>
@@ -1119,7 +1149,7 @@
       <header class="help-header">
         <h2 id="helpTitle">Modern PDF</h2>
         <button id="helpClose" class="mini-btn" title="Close help">
-          <i class="fa-solid fa-xmark"></i>
+          <img src="icons/xmark.svg" class="icon-svg">
         </button>
       </header>
 <div class="help-body">
@@ -1172,7 +1202,7 @@
       <header>
         <h2>Your identity</h2>
         <button id="identityClose" class="mini-btn" title="Close">
-          <i class="fa-solid fa-xmark"></i>
+          <img src="icons/xmark.svg" class="icon-svg">
         </button>
       </header>
       <label class="identity-field">
@@ -1188,5 +1218,9 @@
       <p class="signature-hint">Your name is used for comments. Draw or update your signature here.</p>
     </div>
   </div>
+
+  <script src="lib/pdf.min.js"></script>
+  <script src="lib/pdf-lib.min.js"></script>
+  <script src="viewer.js"></script>
 </body>
 </html>

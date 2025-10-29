@@ -829,7 +829,23 @@ function goToPageNumber(n){
       }
 
       try {
-        const sourceBytes = (originalPdfBytes && originalPdfBytes.length) ? originalPdfBytes : pdfBytes;
+        let sourceBytes = pdfBytes;
+        if (!sourceBytes || sourceBytes.length === 0) {
+      // Try to reload from original source
+      const u = new URL(location.href);
+      const src = u.searchParams.get('src');
+      
+      if (src && isExtension) {
+        const response = await sendRuntimeMessage({ action: 'fetchPdf', url: src });
+        if (response?.success && response.data) {
+          sourceBytes = new Uint8Array(response.data);
+        }
+      }
+    }
+    
+    if (!sourceBytes || sourceBytes.length === 0) {
+      throw new Error('No PDF data available to save');
+    }
         const doc = await PDFLib.PDFDocument.load(sourceBytes);
         doc.setModificationDate?.(new Date());
 
@@ -1269,7 +1285,7 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         const pin = document.createElement('button');
         pin.type = 'button';
         pin.className = 'comment-pin';
-        pin.innerHTML = '<i class="fa-regular fa-comment-dots" aria-hidden="true"></i>';
+        pin.innerHTML = '<img src="icons/comment-dots.svg" class="icon-svg" alt="">';
         pin.dataset.id = anno.id;
         pin.dataset.page = key;
         pin._anno = anno;
