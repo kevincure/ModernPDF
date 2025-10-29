@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Local PDF Viewer",
+  "version": "1.0.0",
+  "description": "Intercepts PDFs and opens them in a custom viewer.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "tabs",
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "action": {
+    "default_title": "Local PDF Viewer"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "viewer.html",
+        "viewer.js",
+        "lib/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

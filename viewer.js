@@ -1,0 +1,2033 @@
+const isExtension = typeof chrome !== "undefined"
+  && chrome.runtime
+  && typeof chrome.runtime.getURL === "function";
+
+// pdf.js UMD exposes either window.pdfjsLib or window['pdfjs-dist/build/pdf']
+const pdfjsLib =
+  window.pdfjsLib || window["pdfjs-dist/build/pdf"];
+
+if (!pdfjsLib) {
+  throw new Error("pdfjsLib not found. Make sure lib/pdf.min.js is loaded before viewer.js");
+}
+
+// Use extension URL when in extension; fallback to relative file path when opened directly
+pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
+  ? chrome.runtime.getURL("lib/pdf.worker.min.js")
+  : "./lib/pdf.worker.min.js";
+    let pdfDoc = null, pdfBytes = null, originalPdfBytes = null;
+    let pages = [];
+    let annotations = {};
+    let currentTool = 'select';
+    let currentScale = 1;
+    const ZOOMS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
+    let dpr = window.devicePixelRatio || 1;
+
+    let signatureDataUrl = localStorage.getItem('userSignature') || null;
+    let nextAnnoId = 1, openCommentTarget = null;
+    let userName = localStorage.getItem('userName') || '';
+    let identityHasInk = !!signatureDataUrl;
+
+    let resizeTimer = null, selectedAnnoEl = null;
+    let isRendering = false, rerenderQueued = false;
+    let scrollTimer = null;
+    let searchResults = [];
+    let currentMatchIndex = -1;
+    const deletedPdfThreads = [];
+
+    const el = (id) => document.getElementById(id);
+    const pagesEl = el('pages'), mainEl = el('main');
+
+const leftBar = document.getElementById('leftBar');
+    function setControlWidth() {
+      const lb = leftBar?.getBoundingClientRect();
+
+      if (mainEl && lb && leftBar) { // Added leftBar check
+         // Hide bar and reset padding if in tool mode
+         if (document.body.classList.contains('tool-mode-active')) {
+           leftBar.style.display = 'none';
+           mainEl.style.paddingLeft = '24px';
+           mainEl.style.cursor = 'crosshair';
+         } else { // Restore bar and set padding
+           leftBar.style.display = 'flex'; // Use flex, not block
+           mainEl.style.cursor = 'auto';
+           const lbWidth = lb.width || 0;
+           if (lbWidth > 0) {
+             // We rely on the CSS rule from Fix 1A to set padding
+             // but we must reset the inline style to allow CSS to take over
+             mainEl.style.paddingLeft = ''; 
+           }
+         }
+      }
+
+      // The control width logic
+      const w = lb ? Math.max(120, Math.floor(lb.width / 2) - 8) : 180;
+      document.documentElement.style.setProperty('--control-width', `${w}px`);
+    }
+
+    const openBtn = el('openBtn'), fileInput = el('file'), saveBtn = el('saveBtn');
+    const identityBtn = el('identityBtn'), textTool = el('textTool'), commentTool = el('commentTool'), signatureTool = el('signatureTool');
+    const selectTextTool = el('selectTextTool');
+    const zoomOutBtn = el('zoomOutBtn'), zoomInBtn = el('zoomInBtn'), fitWidthBtn = el('fitWidthBtn'), toggleReaderBtn = el('toggleReaderBtn');
+    const prevPageBtn = el('prevPageBtn'), nextPageBtn = el('nextPageBtn');
+
+    const helpBtn = el('helpBtn'), helpModal = el('helpModal'), helpClose = el('helpClose');
+
+    const textStylePanel = el('textStylePanel'),
+          textFontFamily = el('textFontFamily'),
+          textFontSize = el('textFontSize'),
+          textBoldBtn = el('textBoldBtn'),
+          textItalicBtn = el('textItalicBtn'),
+          textColor = el('textColor');
+
+    const identityModal = el('identityModal'),
+          identityName = el('identityName'),
+          identityClose = el('identityClose'),
+          identityClear = el('identityClear'),
+          identitySave = el('identitySave'),
+          identitySignatureCanvas = el('identitySignatureCanvas'),
+          identityCtx = identitySignatureCanvas.getContext('2d');
+
+    const cs = {
+      panel: el('commentSidebar'),
+      title: el('csTitle'),
+      thread: el('csThread'),
+      authorName: el('csAuthorName'),
+      identityBtn: el('csIdentityBtn'),
+      text: el('csText'),
+      post: el('csPost'),
+      hide: el('csReplyClose')
+    };
+
+    const searchInput = el('searchInput'),
+          searchPrevBtn = el('searchPrevBtn'),
+          searchNextBtn = el('searchNextBtn'),
+          searchStatus = el('searchStatus');
+
+    function clamp(i, min, max) {
+      return Math.max(min, Math.min(max, i));
+    }
+
+function pageWindow(centerIndex){
+  if(!pdfDoc) return [1,1];
+  const pc = pdfDoc.numPages;
+  const p = clamp(centerIndex+1, 1, pc); // 1-based page number
+  const SPAN = 10; // how many pages around current to render
+  return [Math.max(1, p-SPAN), Math.min(pc, p+SPAN)];
+}
+
+async function renderWindowAroundCurrent(){
+  if(!pdfDoc) return;
+  const [start, end] = pageWindow(currentPageIndex);
+
+  // Ensure wrappers exist for layout stability
+  for (let i = 1; i <= pdfDoc.numPages; i++) ensurePageSlot(i);
+
+  // Paint only current ±1 (and re-paint if scale/DPR changed)
+  const tasks = [];
+  for (let i = start; i <= end; i++) {
+    const slot = pages[i-1];
+    const needsPaint = !slot._painted || slot._scale !== currentScale || slot._dpr !== dpr;
+    if (needsPaint) {
+      tasks.push(
+        renderPage(i).then(async () => {
+          slot._painted = true; slot._scale = currentScale; slot._dpr = dpr;
+          if (currentTool === 'selectText') await renderTextLayer(i);
+        })
+      );
+    }
+  }
+  await Promise.all(tasks);
+}
+
+// Track the most-visible page while scrolling and keep the window rendered
+function updateCurrentPageFromScroll(){
+  if(!pdfDoc) return;
+  const wraps = pagesEl.querySelectorAll('.page');
+  let bestIndex = currentPageIndex, bestDist = Infinity;
+  const container = mainEl.getBoundingClientRect();
+  const targetY = container.top + container.height/2;
+
+  wraps.forEach(w=>{
+    const r = w.getBoundingClientRect();
+    const cy = r.top + r.height/2;
+    const d = Math.abs(cy - targetY);
+    if (d < bestDist) { bestDist = d; bestIndex = (parseInt(w.dataset.page,10) - 1); }
+  });
+
+  if (bestIndex !== currentPageIndex) {
+    currentPageIndex = bestIndex;
+    updatePageInfo();
+  }
+  renderWindowAroundCurrent();
+}
+
+// Lightly throttle the scroll-driven updates
+let visTimer = null;
+mainEl.addEventListener('scroll', ()=>{
+  if (visTimer) clearTimeout(visTimer);
+  visTimer = setTimeout(updateCurrentPageFromScroll, 90);
+}, { passive: true });
+
+
+    function snapIndexFromScale(s) {
+      let best = 0, d = 1e9;
+      for (let i = 0; i < ZOOMS.length; i++) {
+        const di = Math.abs(ZOOMS[i] - s);
+        if (di < d) {
+          d = di;
+          best = i;
+        }
+      }
+      return best;
+    }
+
+    function getMainContentSize() {
+      const s = getComputedStyle(mainEl);
+      const padX = parseFloat(s.paddingLeft || '0') + parseFloat(s.paddingRight || '0');
+      const padY = parseFloat(s.paddingTop || '0') + parseFloat(s.paddingBottom || '0');
+      return {
+        width: Math.max(0, mainEl.clientWidth - padX),
+        height: Math.max(0, mainEl.clientHeight - padY)
+      };
+    }
+
+    async function computeReaderFitScale() {
+      if (!pdfDoc) return currentScale;
+      const p = await pdfDoc.getPage(clamp(currentPageIndex + 1, 1, pdfDoc.numPages));
+      const vp = p.getViewport({ scale: 1 });
+      const { width: w, height: h } = getMainContentSize();
+      if (w <= 0 || h <= 0) return currentScale;
+      return clamp(Math.min(w / vp.width, h / vp.height), ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+    }
+
+    function setTool(name) {
+      currentTool = name;
+      [textTool, commentTool, signatureTool, selectTextTool].forEach(b => b && b.classList.remove('active'));
+      if (name === 'textOnce' && textTool) textTool.classList.add('active');
+      if (name === 'commentOnce' && commentTool) commentTool.classList.add('active');
+      if (name === 'signatureOnce' && signatureTool) signatureTool.classList.add('active');
+      if (name === 'selectText' && selectTextTool) selectTextTool.classList.add('active');
+      updateInteractionModes();
+      const isToolMode = name === 'textOnce' || name === 'commentOnce' || name === 'signatureOnce';
+      document.body.classList.toggle('tool-mode-active', isToolMode);
+      setControlWidth(); // Re-calculate padding and visibility
+    }
+
+    function updateIdentityDisplay() {
+      if (cs.authorName) cs.authorName.textContent = userName || 'Set name';
+    }
+
+    function updateToolbarStates() {
+      if (openBtn) openBtn.classList.toggle('needs-file', !pdfDoc);
+      if (saveBtn) saveBtn.disabled = !pdfDoc;
+      if (toggleReaderBtn) toggleReaderBtn.classList.toggle('active', readerMode);
+      if (identityBtn) identityBtn.title = userName ? `Signed in as ${userName}` : 'Set name & signature';
+    }
+
+
+    function updateInteractionModes() {
+      const selecting = currentTool === 'selectText';
+      pages.forEach(slot => {
+        if (!slot) return;
+        if (slot.textLayer) {
+          slot.textLayer.classList.toggle('hidden', !selecting);
+          slot.textLayer.style.pointerEvents = selecting ? 'auto' : 'none';
+        }
+        if (slot.layer) {
+          slot.layer.style.pointerEvents = selecting ? 'none' : 'auto';
+        }
+      });
+      if (selecting) renderTextLayersForAll();
+    }
+
+    function setSelectedAnnotation(el) {
+      if (selectedAnnoEl && selectedAnnoEl !== el) selectedAnnoEl.classList.remove('selected');
+      selectedAnnoEl = el || null;
+      if (selectedAnnoEl) selectedAnnoEl.classList.add('selected');
+    }
+
+    function toRgb(hex) {
+      const r = parseInt(hex.substr(1, 2), 16) / 255,
+            g = parseInt(hex.substr(3, 2), 16) / 255,
+            b = parseInt(hex.substr(5, 2), 16) / 255;
+      return { r, g, b };
+    }
+
+    function ensurePageSlot(num) {
+      let slot = pages[num - 1];
+      if (slot) return slot;
+
+      const canvas = document.createElement('canvas');
+      const layer = document.createElement('div');
+      layer.className = 'layer';
+      const textLayer = document.createElement('div');
+      textLayer.className = 'textLayer hidden';
+      const wrap = document.createElement('div');
+      wrap.className = 'page';
+      wrap.dataset.page = num;
+
+      wrap.appendChild(canvas);
+      wrap.appendChild(textLayer);
+      wrap.appendChild(layer);
+      pagesEl.appendChild(wrap);
+
+      slot = {
+        num,
+        canvas,
+        ctx: canvas.getContext('2d'),
+        layer,
+        textLayer,
+        baseW: 0,
+        baseH: 0,
+        renderTask: null
+      };
+      pages[num - 1] = slot;
+
+      attachLayerEvents(layer, num);
+      return slot;
+    }
+
+    function cancelAllPageRenders() {
+      pages.forEach(s => {
+        if (s && s.renderTask) {
+          try {
+            s.renderTask.cancel();
+          } catch (_) {}
+          s.renderTask = null;
+        }
+      });
+    }
+
+function goToPageNumber(n){
+  if(!pdfDoc) return;
+  currentPageIndex = clamp(n-1, 0, pdfDoc.numPages-1);
+  if (readerMode) {
+    applyReaderLayout();
+    mainEl.scrollTop = 0; mainEl.scrollLeft = 0;
+  } else {
+    const t = pagesEl.querySelector(`.page[data-page="${currentPageIndex+1}"]`);
+    if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  updatePageInfo();
+  renderWindowAroundCurrent();
+}
+
+    async function renderPage(num) {
+      const page = await pdfDoc.getPage(num);
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: currentScale });
+      const slot = ensurePageSlot(num);
+
+      const wrap = slot.canvas.parentElement;
+      if (wrap) {
+        wrap.style.setProperty(
+          'contain-intrinsic-size',
+          `${Math.ceil(viewport.width)}px ${Math.ceil(viewport.height)}px`
+        );
+      }
+      slot.baseW = base.width;
+      slot.baseH = base.height;
+
+      slot.canvas.style.width = `${viewport.width}px`;
+      slot.canvas.style.height = `${viewport.height}px`;
+
+      const rw = Math.floor(viewport.width * dpr);
+      const rh = Math.floor(viewport.height * dpr);
+      if (slot.canvas.width !== rw || slot.canvas.height !== rh) {
+        slot.canvas.width = rw;
+        slot.canvas.height = rh;
+      }
+
+      slot.layer.style.width = `${base.width}px`;
+      slot.layer.style.height = `${base.height}px`;
+      slot.layer.style.transform = `scale(${currentScale})`;
+
+      slot.textLayer.style.width = `${viewport.width}px`;
+      slot.textLayer.style.height = `${viewport.height}px`;
+      slot.textLayer.style.transform = '';
+
+      if (slot.renderTask) {
+        try {
+          slot.renderTask.cancel();
+        } catch (_) {}
+      }
+      const t = [dpr, 0, 0, dpr, 0, 0];
+      slot.renderTask = page.render({ canvasContext: slot.ctx, viewport, transform: t });
+
+      try {
+        await slot.renderTask.promise;
+      } catch (e) {
+        if (!(e && e.name === 'RenderingCancelledException')) throw e;
+      } finally {
+        slot.renderTask = null;
+      }
+    }
+
+    async function renderTextLayer(num) {
+      const slot = ensurePageSlot(num);
+      if (!slot.textLayer) return;
+
+      slot.textLayer.innerHTML = '';
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale: currentScale });
+      slot.textLayer.style.setProperty('--scale-factor', String(viewport.scale));
+
+      const textContent = await page.getTextContent({ includeMarkedContent: true });
+
+      const task = pdfjsLib.renderTextLayer({
+        textContentSource: textContent,
+        container: slot.textLayer,
+        viewport,
+        enhanceTextSelection: true
+      });
+      await task.promise;
+    }
+
+    async function renderTextLayersForAll() {
+      if (!pdfDoc) return;
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        await renderTextLayer(i);
+      }
+    }
+
+    async function renderAll() {
+      if (isRendering) {
+        rerenderQueued = true;
+        return;
+      }
+      isRendering = true;
+
+      pagesEl.querySelectorAll('.text-anno, .sig-anno, .comment-pin').forEach(el => el.remove());
+
+      try {
+        const keepPos = pagesEl.scrollHeight > 0
+          ? (pagesEl.scrollHeight - mainEl.clientHeight > 0
+              ? mainEl.scrollTop / (pagesEl.scrollHeight - mainEl.clientHeight)
+              : 0)
+          : 0;
+
+        clearSearch();
+        cancelAllPageRenders();
+        pagesEl.innerHTML = '';
+        pages.length = 0;
+
+        setSelectedAnnotation(null);
+        hideTextToolbar();
+
+        for (let i=1; i<=pdfDoc.numPages; i++) { ensurePageSlot(i); }
+        await renderWindowAroundCurrent();
+        if (currentTool === 'selectText') await renderTextLayersForAll();
+
+        rehydrateAnnotations();
+
+        if (pagesEl.scrollHeight > 0) {
+          const total = pagesEl.scrollHeight - mainEl.clientHeight;
+          if (total > 0) mainEl.scrollTop = keepPos * total;
+        }
+
+        updatePageInfo();
+        renderWindowAroundCurrent();
+        applyReaderLayout();
+      } finally {
+        isRendering = false;
+        if (rerenderQueued) {
+          rerenderQueued = false;
+          renderAll();
+        }
+      }
+    }
+
+    function rehydrateAnnotations() {
+      if (!pdfDoc) return;
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const slot = ensurePageSlot(pageNum);
+        const list = annotations[String(pageNum)] || [];
+        for (const a of list) {
+          if (a.type === 'comment' && !a.thread) {
+            a.thread = [];
+          }
+          addAnnotationElement(slot.layer, pageNum, a, { addToState: false });
+        }
+      }
+    }
+
+    function getAuthor(an) {
+      return (
+        (an.title && an.title.trim()) ||
+        (an.t && String(an.t).trim()) ||
+        (an.titleObj?.str && an.titleObj.str.trim()) ||
+        ''
+      );
+    }
+
+    async function importPdfComments() {
+      if (!pdfDoc) return;
+
+      let maxId = nextAnnoId;
+      for (const key in annotations) {
+        const list = annotations[key];
+        if (Array.isArray(list)) for (const a of list) if (a.id >= maxId) maxId = a.id + 1;
+      }
+
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const vp = page.getViewport({ scale: 1 });
+        const ph = vp.height;
+
+        const annots = await page.getAnnotations({ intent: 'display' });
+        if (!annots || !annots.length) continue;
+
+        const texts = annots.filter(an =>
+          (an.subtype || an.subType || an.annotationType) === 'Text' || an.annotationType === 1
+        );
+        if (!texts.length) continue;
+
+        const byId = new Map();
+        const getId = (an) => an.id || an.annotationId || (an.ref ? String(an.ref) : null);
+        for (const an of texts) {
+          const id = getId(an);
+          if (id) byId.set(id, { ...an });
+        }
+
+        const rootOf = (id) => {
+          let cur = byId.get(id), safety = 0;
+          while (cur && cur.inReplyTo && byId.has(cur.inReplyTo) && safety++ < 32) {
+            cur = byId.get(cur.inReplyTo);
+          }
+          return cur;
+        };
+
+        const groups = new Map();
+        for (const an of byId.values()) {
+          const root = an.inReplyTo ? rootOf(an.inReplyTo) : an;
+          const rootId = getId(root);
+          if (!rootId) continue;
+          let g = groups.get(rootId);
+          if (!g) {
+            g = { root: root, replies: [] };
+            groups.set(rootId, g);
+          }
+          if (an !== root) g.replies.push(an);
+        }
+
+        for (const g of groups.values()) {
+          const r = (g.root.rect || []).map(Number);
+          if (r.length < 4) continue;
+          const left = Math.min(r[0], r[2]);
+          const top = Math.max(r[1], r[3]);
+          const x = left, y = ph - top;
+
+          const thread = [];
+          const rootAuthor = getAuthor(g.root) || 'Imported Author';
+          const rootText = (g.root.contentsObj?.str || g.root.contents || g.root.content || '').trim();
+          if (rootText) thread.push({ author: rootAuthor, text: rootText, time: '' });
+
+          const sortedReplies = g.replies.sort((a, b) => (a.creationDate || '').localeCompare(b.creationDate || ''));
+
+          for (const rep of sortedReplies) {
+            const repAuthor = getAuthor(rep) || 'Imported Author';
+            const repText = (rep.contentsObj?.str || rep.contents || rep.content || '').trim();
+            if (repText) thread.push({ author: repAuthor, text: repText, time: '' });
+          }
+
+          if (thread.length > 0) {
+            const anno = {
+              id: maxId++,
+              type: 'comment',
+              page: pageNum,
+              x,
+              y,
+              thread,
+              origin: 'pdf',
+              _importedCount: thread.length
+            };
+            (annotations[String(pageNum)] || (annotations[String(pageNum)] = [])).push(anno);
+          }
+        }
+      }
+      nextAnnoId = maxId;
+    }
+
+    function clearSearch() {
+      searchResults.forEach(res => res.element?.remove());
+      searchResults = [];
+      currentMatchIndex = -1;
+      searchStatus.textContent = '0 / 0';
+      searchInput.value = '';
+    }
+
+    function updateActiveHighlight() {
+      const hasResults = searchResults.length > 0;
+      searchNextBtn.disabled = !hasResults;
+      searchPrevBtn.disabled = !hasResults;
+
+      if (!hasResults) {
+        searchStatus.textContent = '0 / 0';
+        return;
+      }
+
+      if (currentMatchIndex === -1 && searchResults.length > 0) currentMatchIndex = 0;
+      if (currentMatchIndex < 0) return;
+
+      searchResults.forEach((res, index) => {
+        res.element?.classList.toggle('current-match', index === currentMatchIndex);
+      });
+
+      const currentResult = searchResults[currentMatchIndex];
+      if (currentResult && currentResult.element) {
+        currentResult.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        searchStatus.textContent = `${currentMatchIndex + 1} / ${searchResults.length}`;
+      }
+    }
+
+    async function performSearch() {
+      if (!pdfDoc) return;
+      const query = (searchInput.value || '').trim().toLowerCase();
+
+      searchResults.forEach(res => res.element?.remove());
+      searchResults = [];
+      currentMatchIndex = -1;
+
+      if (!query) {
+        updateActiveHighlight();
+        return;
+      }
+
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const slot = ensurePageSlot(i);
+        const { height: pageH } = page.getViewport({ scale: 1 });
+        const textContent = await page.getTextContent();
+
+        for (const item of textContent.items) {
+          const itemText = item.str.toLowerCase();
+          if (itemText.includes(query)) {
+            let startIndex = 0;
+            while ((startIndex = itemText.indexOf(query, startIndex)) > -1) {
+              const [sX, sY, eX, eY, tX, tY] = item.transform;
+              const itemW = item.width;
+
+              const highlight = document.createElement('div');
+              highlight.className = 'search-highlight';
+
+              const startPos = tX + (itemW * (startIndex / item.str.length));
+              const matchWidth = itemW * (query.length / item.str.length);
+
+              highlight.style.left = `${startPos}px`;
+              highlight.style.top = `${pageH - tY - (item.height * 0.8)}px`;
+              highlight.style.width = `${matchWidth}px`;
+              highlight.style.height = `${item.height}px`;
+
+              slot.layer.appendChild(highlight);
+              searchResults.push({ pageNum: i, element: highlight });
+
+              startIndex += query.length;
+            }
+          }
+        }
+      }
+      updateActiveHighlight();
+    }
+
+    async function loadPdfBytesArray(buf) {
+      const data = buf instanceof Uint8Array ? Uint8Array.from(buf) : new Uint8Array(buf);
+      pdfBytes = Uint8Array.from(data);
+      originalPdfBytes = Uint8Array.from(data);
+
+      const loading = pdfjsLib.getDocument({ data: pdfBytes });
+      pdfDoc = await loading.promise;
+
+      annotations = {};
+      nextAnnoId = 1;
+
+      await importPdfComments();
+
+      currentScale = 1;
+      readerMode = false;
+      readerPrevScale = 1;
+      currentPageIndex = 0;
+
+      await renderAll();
+      setTool('select');
+      hideTextToolbar();
+      clearSearch();
+      closeCommentUI();
+      updateToolbarStates();
+    }
+
+    openBtn.onclick = () => fileInput.click();
+    fileInput.onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const b = await f.arrayBuffer();
+      await loadPdfBytesArray(new Uint8Array(b));
+      e.target.value = '';
+    };
+
+    function fontKeyFor(f, w, s) {
+      const fam = /times/i.test(f || '') ? 'Times' : (/courier/i.test(f || '') ? 'Courier' : 'Helvetica');
+      const bold = String(w || '').toLowerCase() === 'bold';
+      const italic = String(s || '').toLowerCase() === 'italic';
+      if (fam === 'Helvetica') {
+        if (bold && italic) return 'HelveticaBoldOblique';
+        if (bold) return 'HelveticaBold';
+        if (italic) return 'HelveticaOblique';
+        return 'Helvetica';
+      }
+      if (fam === 'Times') {
+        if (bold && italic) return 'TimesBoldItalic';
+        if (bold) return 'TimesBold';
+        if (italic) return 'TimesItalic';
+        return 'TimesRoman';
+      }
+      if (bold && italic) return 'CourierBoldOblique';
+      if (bold) return 'CourierBold';
+      if (italic) return 'CourierOblique';
+      return 'Courier';
+    }
+
+    function wrapLines(text, pdfFont, size, maxWidth) {
+      const paras = (text || '').replace(/\r\n/g, '\n').split('\n');
+      const out = [];
+      for (const para of paras) {
+        const words = para.split(/\s+/);
+        let line = '';
+        for (const w of words) {
+          const test = line ? line + ' ' + w : w;
+          const width = pdfFont.widthOfTextAtSize(test, size);
+          if (width <= maxWidth) {
+            line = test;
+          } else {
+            if (line) out.push(line);
+            line = w;
+          }
+        }
+        out.push(line);
+      }
+      return out;
+    }
+
+    saveBtn.onclick = async () => {
+      if (!pdfBytes || !pdfDoc) {
+        alert('Open a PDF first.');
+        return;
+      }
+
+      try {
+        const sourceBytes = (originalPdfBytes && originalPdfBytes.length) ? originalPdfBytes : pdfBytes;
+        const doc = await PDFLib.PDFDocument.load(sourceBytes);
+        doc.setModificationDate?.(new Date());
+
+        const N = PDFLib.PDFName, S = PDFLib.PDFString, Num = PDFLib.PDFNumber;
+
+        const fontCache = {};
+        const ensureFont = async (name) => {
+          if (fontCache[name]) return fontCache[name];
+          const f = await doc.embedFont(PDFLib.StandardFonts[name]);
+          fontCache[name] = f;
+          return f;
+        };
+
+        const getAnnotsArray = (page) => {
+          let arr = page.node.lookup(N.of('Annots'));
+          if (!arr) {
+            arr = doc.context.obj([]);
+            page.node.set(N.of('Annots'), arr);
+          }
+          return arr;
+        };
+
+        const addTextAnnot = (page, x, y, w, h, contents, author) => {
+          const rect = doc.context.obj([Num.of(x), Num.of(y), Num.of(x + w), Num.of(y + h)]);
+          const annot = doc.context.obj({
+            Type: N.of('Annot'),
+            Subtype: N.of('Text'),
+            Rect: rect,
+            Contents: S.of(contents || ''),
+            T: S.of(author || ''),
+            C: doc.context.obj([Num.of(1), Num.of(0.85), Num.of(0.35)]),
+            Name: N.of('Comment'),
+            F: Num.of(4)
+          });
+          const ref = doc.context.register(annot);
+          const arr = getAnnotsArray(page);
+          arr.push(ref);
+          return ref;
+        };
+
+        const addReplyAnnot = (page, parentRef, x, y, w, h, contents, author) => {
+          const rect = doc.context.obj([Num.of(x), Num.of(y), Num.of(x + w), Num.of(y + h)]);
+          const annot = doc.context.obj({
+            Type: N.of('Annot'),
+            Subtype: N.of('Text'),
+            Rect: rect,
+            Contents: S.of(contents || ''),
+            T: S.of(author || ''),
+            IRT: parentRef,
+            RT: N.of('R'),
+            C: doc.context.obj([Num.of(1), Num.of(0.85), Num.of(0.35)]),
+            Name: N.of('Comment'),
+            F: Num.of(4)
+          });
+          const ref = doc.context.register(annot);
+          const arr = getAnnotsArray(page);
+          arr.push(ref);
+          return ref;
+        };
+
+        const pagesLib = doc.getPages();
+
+        // Process deleted PDF threads
+        const uniqueDeletes = new Map();
+        for (const del of deletedPdfThreads) {
+          const key = `${del.page}-${Math.round(del.x)}-${Math.round(del.y)}`;
+          uniqueDeletes.set(key, del); // De-duplicate
+        }
+
+        for (const del of uniqueDeletes.values()) {
+          try {
+            const pIndex = parseInt(del.page, 10) - 1;
+            if (pIndex < 0 || pIndex >= pagesLib.length) continue;
+            
+            const page = pagesLib[pIndex];
+            const { height: ph } = page.getSize();
+            const delY_pdf = ph - del.y; // This is the y2 coordinate
+            
+            const annotsArrayRef = page.node.lookup(N.of('Annots'));
+            if (!annotsArrayRef) continue;
+            const annotsArray = doc.context.lookup(annotsArrayRef);
+            if (!annotsArray || !annotsArray.asArray) continue;
+            const arr = annotsArray.asArray();
+            if (!arr || !arr.length) continue;
+
+            const rootRefToDel = findNearestTextAnnotRef(doc, annotsArray, del.x, delY_pdf, 32);
+
+            if (rootRefToDel) {
+              const refsToKeep = [];
+              const refsToDel = new Set([rootRefToDel]);
+
+              // Now find all replies to that root
+              for (const ref of arr) {
+                if (ref === rootRefToDel) continue; // Already in del set
+                
+                const dict = doc.context.lookup(ref);
+                const irt = dict?.get(N.of('IRT'));
+                
+                if (irt === rootRefToDel) {
+                  refsToDel.add(ref); // Delete replies too
+                } else {
+                  refsToKeep.push(ref);
+                }
+              }
+              
+              // If any refs were marked for deletion, rebuild the Annots array
+              if (refsToDel.size > 0) {
+                annotsArray.clear();
+                refsToKeep.forEach(r => annotsArray.push(r));
+              }
+            }
+
+          } catch (err) {
+            console.warn('Failed to delete PDF annotation:', err);
+          }
+        }
+
+        for (const key in annotations) {
+          const list = annotations[key];
+          if (!list || !list.length) continue;
+
+          const pIndex = parseInt(key, 10) - 1;
+          const page = pagesLib[pIndex];
+          const { height: ph } = page.getSize();
+
+          for (const a of list) {
+            if (a.type === 'text' && (a.content || '').trim()) {
+              const fKey = fontKeyFor(a.styles?.fontFamily, a.styles?.fontWeight, a.styles?.fontStyle);
+              const font = await ensureFont(fKey);
+              const size = parseInt(a.styles?.fontSize || '12', 10);
+              const col = toRgb(a.styles?.color || '#000000');
+
+              const maxW = Math.max(24, Math.floor((a.boxWpt || a.boxW || 240)));
+              const lines = wrapLines(a.content, font, size, maxW);
+              const lh = size * 1.2;
+
+              let y = ph - a.y - size;
+              for (const line of lines) {
+                page.drawText(line, { x: a.x, y, size, font, color: PDFLib.rgb(col.r, col.g, col.b) });
+                y -= lh;
+              }
+            } else if (a.type === 'signature' && a.dataUrl) {
+              const img = await doc.embedPng(a.dataUrl);
+              const w = a.w || 200, h = a.h || 80;
+              page.drawImage(img, { x: a.x, y: ph - a.y - h, width: w, height: h });
+                        } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
+              const rootY = ph - a.y - 24;
+              let rootRef = null;
+
+              // Helper: find nearest existing Text annotation to use as IRT
+function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
+          try {
+            const N = PDFLib.PDFName;
+            const arr = annotsArray.asArray ? annotsArray.asArray() : (annotsArray.array || []);
+            let bestRef = null, bestD2 = 1e12;
+            for (const ref of arr) {
+              const dict = doc.context.lookup(ref);
+              if (!dict || String(dict.get(N.of('Subtype'))) !== '/Text') continue;
+              const rect = dict.get(N.of('Rect'));
+              if (!rect || !rect.asArray) continue;
+              const nums = rect.asArray().map(n =>
+               n?.number !== undefined ? n.number : (n?.asNumber ? n.asNumber() : Number(n))
+              );
+              const [x1,y1,x2,y2] = nums;
+              const rx1 = Math.min(x1, x2);
+              const ry2 = Math.max(y1, y2);
+              // x is a.x (which is x1 from import)
+              // y is ph - a.y (which is y2 from import)
+              const dx = rx1 - x, dy = ry2 - y;
+              if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) { // Use tight tolerance
+                const d2 = dx*dx + dy*dy;
+                if (d2 < bestD2) { bestD2 = d2; bestRef = ref; }
+              }
+            }
+            return bestRef;
+          } catch { return null; }
+        }
+
+              const annotsArray = getAnnotsArray(page); // ensure we have an Annots array
+
+              if (a.origin === 'pdf') {
+                rootRef = findNearestTextAnnotRef(doc, annotsArray, a.x, rootY) || null;
+                if (!rootRef) {
+                  // Fallback: create a new root if we couldn't find the original
+                  const root0 = a.thread[0] || { text:'', author:userName || 'User' };
+                  rootRef = addTextAnnot(page, a.x, rootY, 24, 24,
+                                         String(root0.text||''), String(root0.author||''));
+                }
+                const start = Math.max((a._importedCount|0), 1); // replies user added
+                for (let i = start; i < a.thread.length; i++) {
+                  const r = a.thread[i];
+                  addReplyAnnot(page, rootRef,
+                    a.x + 6*i, rootY - 6*i, 24, 24,
+                    String(r.text||''), String(r.author || userName || 'User'));
+                }
+              } else {
+                // Normal user-created thread: create root + all replies
+                const root = a.thread[0];
+                rootRef = addTextAnnot(page, a.x, rootY, 24, 24,
+                                       String(root.text||''), String(root.author || userName || 'User'));
+                for (let i = 1; i < a.thread.length; i++) {
+                  const r = a.thread[i];
+                   addReplyAnnot(page, rootRef,
+                    a.x + 6*i, rootY - 6*i, 24, 24,
+                    String(r.text||''), String(r.author || userName || 'User'));
+                }
+              }
+            }
+          }
+        }
+
+        const out = await doc.save();
+        const bytes = out instanceof Uint8Array ? out : new Uint8Array(out);
+        const stable = bytes.slice();
+
+        pdfBytes = stable;
+
+        const blob = new Blob([stable], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'annotated.pdf';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch (err) {
+        alert('Save failed: ' + err.message);
+        console.error(err);
+      }
+    };
+
+    if (identityBtn) {
+      identityBtn.onclick = () => {
+        closeHamburger();
+        openIdentityModal();
+      };
+    }
+    if (textTool) {
+      textTool.onclick = () => setTool('textOnce');
+    }
+    if (commentTool) {
+      commentTool.onclick = () => {
+        if (!userName) {
+          openIdentityModal();
+        } else {
+          setTool('commentOnce');
+        }
+      };
+    }
+    if (signatureTool) {
+      signatureTool.onclick = () => {
+        if (!signatureDataUrl) {
+          openIdentityModal();
+        } else {
+          setTool('signatureOnce');
+        }
+      };
+    }
+    if (selectTextTool) {
+      selectTextTool.onclick = () => {
+        setTool(currentTool === 'selectText' ? 'select' : 'selectText');
+      };
+    }
+
+    function openIdentityModal() {
+      identityModal.classList.remove('hidden');
+      setTool('select');
+      identityHasInk = !!signatureDataUrl;
+      identityCtx.clearRect(0, 0, identitySignatureCanvas.width, identitySignatureCanvas.height);
+      identityName.value = userName;
+
+      if (signatureDataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          identityCtx.clearRect(0, 0, identitySignatureCanvas.width, identitySignatureCanvas.height);
+          identityCtx.drawImage(img, 0, 0, identitySignatureCanvas.width, identitySignatureCanvas.height);
+          identityHasInk = true;
+        };
+        img.src = signatureDataUrl;
+      }
+      requestAnimationFrame(() => identityName.focus());
+    }
+
+    function closeIdentityModal() {
+      identityModal.classList.add('hidden');
+      setTool('select');
+    }
+
+    if (helpBtn) helpBtn.onclick = () =>  { closeHamburger(); helpModal.classList.remove('hidden'); }
+    if (helpClose) helpClose.onclick = () => helpModal.classList.add('hidden');
+    if (helpModal) {
+      helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) helpModal.classList.add('hidden');
+      });
+    }
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        performSearch();
+      }
+      if (e.key === 'Escape') clearSearch();
+    });
+
+    searchNextBtn.onclick = () => {
+      if (!searchResults.length) return;
+      currentMatchIndex = (currentMatchIndex + 1) % searchResults.length;
+      updateActiveHighlight();
+    };
+
+    searchPrevBtn.onclick = () => {
+      if (!searchResults.length) return;
+      currentMatchIndex = (currentMatchIndex - 1 + searchResults.length) % searchResults.length;
+      updateActiveHighlight();
+    };
+
+    function attachLayerEvents(layer, pageNum) {
+      layer.addEventListener('click', (e) => {
+        if (e.target !== layer) return;
+
+        const rect = layer.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / currentScale;
+        const y = (e.clientY - rect.top) / currentScale;
+
+        if (currentTool === 'textOnce') {
+          const anno = {
+            id: nextAnnoId++,
+            type: 'text',
+            page: pageNum,
+            x,
+            y,
+            content: '',
+            styles: {
+              fontFamily: 'Helvetica',
+              fontSize: '12',
+              fontWeight: 'normal',
+              fontStyle: 'normal',
+              color: '#000000'
+            },
+            boxWpt: 200
+          };
+          addAnnotationElement(layer, pageNum, anno, { addToState: true, focus: true });
+          setTool('select');
+        } else if (currentTool === 'commentOnce') {
+          const anno = {
+            id: nextAnnoId++,
+            type: 'comment',
+            page: pageNum,
+            x,
+            y,
+            thread: [],
+            origin: 'user'
+          };
+          addAnnotationElement(layer, pageNum, anno, { addToState: true });
+          openCommentUI(pageNum, anno);
+          setTool('select');
+        } else if (currentTool === 'signatureOnce' && signatureDataUrl) {
+          const anno = {
+            id: nextAnnoId++,
+            type: 'signature',
+            page: pageNum,
+            x,
+            y,
+            w: 200,
+            h: 80,
+            dataUrl: signatureDataUrl
+          };
+          addAnnotationElement(layer, pageNum, anno, { addToState: true });
+          setTool('select');
+        }
+      });
+    }
+
+    function addAnnotationElement(layer, pageNum, anno, opts) {
+      const { addToState = false, focus = false } = opts || {};
+      const key = String(pageNum);
+      anno.page = pageNum;
+
+      if (addToState) {
+        if (!annotations[key]) annotations[key] = [];
+        annotations[key].push(anno);
+      }
+
+      if (anno.type === 'text') {
+        const div = document.createElement('div');
+        div.className = 'text-anno';
+        div.contentEditable = true;
+        div.dataset.id = anno.id;
+        div.dataset.page = key;
+        div._anno = anno;
+
+        div.style.left = anno.x + 'px';
+        div.style.top = anno.y + 'px';
+        div.style.minWidth = '120px';
+        div.style.minHeight = '24px';
+        div.style.width = (anno.boxWpt || 200) + 'px';
+
+        div.style.fontFamily = anno.styles.fontFamily;
+        div.style.fontSize = (parseInt(anno.styles.fontSize, 10) || 12) + 'px';
+        div.style.fontWeight = anno.styles.fontWeight;
+        div.style.fontStyle = anno.styles.fontStyle;
+        div.style.color = anno.styles.color || '#000';
+
+        div.textContent = anno.content || '';
+
+        div.addEventListener('input', () => {
+          anno.content = div.textContent;
+          const w = div.getBoundingClientRect().width / currentScale;
+          anno.boxWpt = Math.max(120, Math.min(800, w));
+          if (document.activeElement === div) {
+            showTextToolbar(div, anno);
+            positionTextToolbar(div);
+          }
+        });
+        div.addEventListener('focus', () => {
+          setSelectedAnnotation(div);
+          showTextToolbar(div, anno);
+        });
+        div.addEventListener('click', () => {
+          if (document.activeElement !== div) div.focus();
+          setSelectedAnnotation(div);
+          showTextToolbar(div, anno);
+        });
+        div.addEventListener('blur', () => {
+          if (selectedAnnoEl === div) setSelectedAnnotation(null);
+          if (!div.textContent.trim()) {
+            removeAnnotationElement(div, anno);
+          }
+        });
+
+        makeDraggable(div, anno, layer, false);
+        layer.appendChild(div);
+        if (focus) {
+          div.focus();
+          showTextToolbar(div, anno);
+        }
+      } else if (anno.type === 'comment') {
+        const pin = document.createElement('button');
+        pin.type = 'button';
+        pin.className = 'comment-pin';
+        pin.innerHTML = '<i class="fa-regular fa-comment-dots" aria-hidden="true"></i>';
+        pin.dataset.id = anno.id;
+        pin.dataset.page = key;
+        pin._anno = anno;
+
+        pin.onclick = (ev) => {
+          ev.stopPropagation();
+          openCommentUI(pageNum, anno);
+        };
+        layer.appendChild(pin);
+        const pinHalf = (pin.offsetWidth || 28) / 2;
+        pin.style.left = (anno.x - pinHalf) + 'px';
+        pin.style.top = (anno.y - pinHalf) + 'px';
+        makeDraggable(pin, anno, layer, true);
+      } else if (anno.type === 'signature') {
+        const box = document.createElement('div');
+        box.className = 'sig-anno';
+        box.dataset.id = anno.id;
+        box.dataset.page = key;
+        box._anno = anno;
+
+        box.style.left = anno.x + 'px';
+        box.style.top = anno.y + 'px';
+
+        const w = parseFloat(anno.w) || 200, h = parseFloat(anno.h) || 80;
+        anno.w = w;
+        anno.h = h;
+        box.style.width = w + 'px';
+        box.style.height = h + 'px';
+
+        const img = document.createElement('img');
+        img.src = anno.dataUrl;
+        img.draggable = false;
+        box.appendChild(img);
+
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        box.appendChild(handle);
+
+        box.addEventListener('mousedown', () => {
+          setSelectedAnnotation(box);
+        });
+
+        makeDraggable(box, anno, layer, false);
+        makeResizable(box, handle, anno);
+
+        layer.appendChild(box);
+      }
+    }
+
+    function removeAnnotationFromState(anno) {
+      const key = String(anno.page);
+      const list = annotations[key];
+      if (!Array.isArray(list)) return;
+      const i = list.indexOf(anno);
+      if (i >= 0) list.splice(i, 1);
+      if (!list.length) delete annotations[key];
+    }
+
+    function removeAnnotationElement(el, anno) {
+      if (!el) return;
+      // If this was an imported PDF comment, remember to delete the original thread on save
+      if (anno?.type === 'comment' && anno.origin === 'pdf') {
+        deletedPdfThreads.push({ page: anno.page, x: anno.x, y: anno.y });
+      }
+      if (anno) removeAnnotationFromState(anno);
+      if (el.parentElement) el.parentElement.removeChild(el);
+      if (selectedAnnoEl === el) setSelectedAnnotation(null);
+      if (anno?.type === 'text') hideTextToolbar();
+      if (anno?.type === 'comment' && openCommentTarget && openCommentTarget.anno === anno) closeCommentUI();
+    }
+
+    function makeDraggable(el, anno, layer, isPin) {
+      const isText = el.classList.contains('text-anno');
+      const isSignature = el.classList.contains('sig-anno');
+
+      let dragging = false, dragCandidate = false, sx = 0, sy = 0, origL = 0, origT = 0;
+
+      const pinHalf = isPin ? (el.offsetWidth / 2 || 11) : 0;
+      const apply = (L, T) => {
+        el.style.left = `${L}px`;
+        el.style.top = `${T}px`;
+        if (isPin) {
+          anno.x = L + pinHalf;
+          anno.y = T + pinHalf;
+        } else {
+          anno.x = L;
+          anno.y = T;
+        }
+        if (isText && textToolbarTarget === el) positionTextToolbar(el);
+      };
+
+      el.addEventListener('mousedown', (e) => {
+        if (e.button && e.button !== 0) return;
+
+        if (isText) {
+          dragCandidate = true;
+          sx = e.clientX;
+          sy = e.clientY;
+          origL = parseFloat(el.style.left) || 0;
+          origT = parseFloat(el.style.top) || 0;
+          return;
+        }
+
+        if (!isSignature && !isPin && e.target !== el) return;
+
+        dragging = true;
+        sx = e.clientX;
+        sy = e.clientY;
+        origL = parseFloat(el.style.left) || 0;
+        origT = parseFloat(el.style.top) || 0;
+        e.preventDefault();
+        if (isText) hideTextToolbar();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (isText) {
+          if (!dragCandidate) return;
+          const dx = (e.clientX - sx) / currentScale, dy = (e.clientY - sy) / currentScale;
+          if (!dragging) {
+            if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) return;
+            dragging = true;
+            hideTextToolbar();
+          }
+          e.preventDefault();
+          apply(origL + dx, origT + dy);
+          return;
+        }
+        if (!dragging) return;
+        const dx = (e.clientX - sx) / currentScale, dy = (e.clientY - sy) / currentScale;
+        e.preventDefault();
+        apply(origL + dx, origT + dy);
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (dragging || dragCandidate) {
+          dragging = false;
+          dragCandidate = false;
+        }
+      });
+    }
+
+    function makeResizable(el, handle, anno) {
+      if (!handle) return;
+      const MIN_W = 60, MIN_H = 24;
+      let resizing = false, startX = 0, startY = 0, startW = 0, startH = 0;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizing = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = parseFloat(el.style.width) || anno.w || 200;
+        startH = parseFloat(el.style.height) || anno.h || 80;
+        setSelectedAnnotation(el);
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!resizing) return;
+        const dw = (e.clientX - startX) / currentScale, dh = (e.clientY - startY) / currentScale;
+        const nw = Math.max(MIN_W, startW + dw), nh = Math.max(MIN_H, startH + dh);
+        el.style.width = `${nw}px`;
+        el.style.height = `${nh}px`;
+        anno.w = nw;
+        anno.h = nh;
+      });
+      window.addEventListener('mouseup', () => {
+        if (resizing) resizing = false;
+      });
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.target.closest && (e.target.closest('.sig-anno') || e.target.closest('.text-anno') || e.target.closest('.comment-pin'))) return;
+      if (selectedAnnoEl) setSelectedAnnotation(null);
+    });
+
+    function openCommentUI(pageNum, anno) {
+      openCommentTarget = { pageNum, anno };
+
+      cs.panel.classList.add('open');
+      cs.thread.innerHTML = '';
+      updateIdentityDisplay();
+
+      if (anno.thread && anno.thread.length) {
+        anno.thread.forEach((c, idx) => {
+          const div = document.createElement('div');
+          div.className = 'cs-item' + (idx > 0 ? ' reply' : '');
+          div.innerHTML =
+            `<div class="cs-author">${c.author || 'User'}</div>
+             <div class="cs-text">${(c.text || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+             <div class="cs-time">${c.time || ''}</div>`;
+          const del = document.createElement('button');
+          del.className = 'mini-btn cs-del';
+          del.title = 'Delete';
+          del.dataset.index = String(idx);
+          del.textContent = '×';
+          div.prepend(del);
+          cs.thread.appendChild(div);
+        });
+        cs.thread.scrollTop = cs.thread.scrollHeight;
+        cs.text.placeholder = 'Write a reply...';
+        cs.post.textContent = 'Reply';
+      } else {
+        cs.text.placeholder = 'Write a comment...';
+        cs.post.textContent = 'Post';
+      }
+
+      cs.text.focus();
+    }
+
+    function closeCommentUI(){
+      cs.panel.classList.remove('open');
+      if (openCommentTarget) {
+        const { anno } = openCommentTarget;
+        const emptyThread = !anno.thread || anno.thread.every(m => !m.text || !m.text.trim());
+        if (emptyThread) {
+          const pinEl = pagesEl.querySelector(`.comment-pin[data-id="${anno.id}"]`);
+          if (pinEl) removeAnnotationElement(pinEl, anno);
+        }
+      }
+      openCommentTarget = null;
+    }
+
+    // Delete a single comment/reply. If the thread becomes empty, remove the pin.
+    cs.thread.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.cs-del');
+      if (!btn || !openCommentTarget) return;
+    
+      const i = parseInt(btn.dataset.index, 10);
+      const { anno, pageNum } = openCommentTarget;
+    
+      if (Number.isInteger(i) && anno.thread && anno.thread[i]) {
+        
+        // Check if we are deleting an *imported* reply
+        if (anno.origin === 'pdf' && i < (anno._importedCount || 0)) {
+          // Mark the root thread for deletion from the original PDF
+          deletedPdfThreads.push({ page: anno.page, x: anno.x, y: anno.y });
+        }
+    
+        anno.thread.splice(i, 1);
+        
+        // If it was an imported thread and we modified it, convert to a 'user' thread
+        // This ensures it gets fully re-written on save, not just appended to
+        if (anno.origin === 'pdf') {
+          anno.origin = 'user'; // Convert to a user thread
+          anno._importedCount = 0; // It will now be saved from scratch
+        }
+    
+        if (anno.thread.length === 0) {
+          const pinEl = pagesEl.querySelector(`.comment-pin[data-id="${anno.id}"]`);
+          if (pinEl) removeAnnotationElement(pinEl, anno); // This also adds to deletedPdfThreads
+          closeCommentUI();
+        } else {
+          openCommentUI(pageNum, anno); // rebuild
+        }
+      }
+    });
+
+    cs.post.onclick = () => {
+      if (!openCommentTarget) return;
+      if (!userName) {
+        openIdentityModal();
+        return;
+      }
+
+      const text = (cs.text.value || '').trim();
+      if (!text) return;
+
+      const c = { author: userName, text, time: new Date().toLocaleString() };
+      const { pageNum, anno } = openCommentTarget;
+
+      if (!anno.thread) anno.thread = [];
+      anno.thread.push(c);
+
+      cs.text.value = '';
+      openCommentUI(pageNum, anno);
+    };
+    cs.close && (cs.close.onclick = closeCommentUI);
+    cs.hide.onclick = closeCommentUI;
+    cs.identityBtn && (cs.identityBtn.onclick = () => openIdentityModal());
+
+    document.addEventListener('click', (e) => {
+      if (!cs.panel.classList.contains('open')) return;
+      if (cs.panel.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('.comment-pin')) return;
+      closeCommentUI();
+    }, true);
+
+    function setScale(s) {
+      currentScale = s;
+      renderAll();
+    }
+
+    zoomInBtn.onclick = () => {
+      const i = snapIndexFromScale(currentScale);
+      setScale(ZOOMS[clamp(i + 1, 0, ZOOMS.length - 1)]);
+    };
+    zoomOutBtn.onclick = () => {
+      const i = snapIndexFromScale(currentScale);
+      setScale(ZOOMS[clamp(i - 1, 0, ZOOMS.length - 1)]);
+    };
+
+function fitToAvailableWidth() {
+  if (!pdfDoc) return;
+  pdfDoc.getPage(1).then(p => {
+    const vp = p.getViewport({ scale: 1 });
+    // Use the real inner width of the scrolling area, not window width.
+    const { width: target } = getMainContentSize(); // already defined in your code
+    if (target <= 0) return;
+    const s = clamp(target / vp.width, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+    setScale(s);
+  });
+}
+fitWidthBtn.onclick = fitToAvailableWidth;
+
+    function applyReaderLayout() {
+      document.body.classList.toggle('reader', readerMode);
+      const pc = pdfDoc ? pdfDoc.numPages : 0;
+
+      pagesEl.querySelectorAll('.page').forEach(w => {
+        w.style.display = 'none';
+      });
+      if (!pdfDoc) return;
+
+      if (!readerMode) {
+        pagesEl.querySelectorAll('.page').forEach(w => {
+          w.style.display = 'block';
+        });
+        return;
+      }
+      const p = clamp(currentPageIndex + 1, 1, pc);
+      const wrap = pagesEl.querySelector(`.page[data-page="${p}"]`);
+      if (wrap) wrap.style.display = 'block';
+    }
+
+    async function toggleReader() {
+      if (!pdfDoc) return;
+
+      const entering = !readerMode;
+      if (entering) {
+        readerPrevScale = currentScale;
+        readerMode = true;
+        currentScale = await computeReaderFitScale();
+        await renderAll();
+        mainEl.scrollTop = 0;
+        mainEl.scrollLeft = 0;
+
+        if (document.fullscreenElement == null) {
+          const req = document.documentElement.requestFullscreen;
+          if (typeof req === 'function') {
+            Promise.resolve(req.call(document.documentElement)).catch(() => {});
+          }
+        }
+      } else {
+        readerMode = false;
+        currentScale = readerPrevScale || currentScale;
+        await renderAll();
+        mainEl.scrollTop = 0;
+        mainEl.scrollLeft = 0;
+
+        if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+          document.exitFullscreen().catch?.(() => {});
+        }
+      }
+      updateToolbarStates();
+      updatePageInfo();
+    }
+
+    toggleReaderBtn && toggleReaderBtn.addEventListener('click', () => toggleReader());
+    document.addEventListener('fullscreenchange', async () => {
+      if (!document.fullscreenElement && readerMode) {
+        readerMode = false;
+        currentScale = readerPrevScale || currentScale;
+        await renderAll();
+        updateToolbarStates();
+        updatePageInfo();
+      }
+    });
+
+    function goToPage(delta) {
+      if (!pdfDoc) return;
+      const pc = pdfDoc.numPages;
+      currentPageIndex = clamp(currentPageIndex + delta, 0, pc - 1);
+
+      if (readerMode) {
+        applyReaderLayout();
+        mainEl.scrollTop = 0;
+        mainEl.scrollLeft = 0;
+      } else {
+        const t = pagesEl.querySelector(`.page[data-page="${currentPageIndex + 1}"]`);
+        if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      updatePageInfo();
+    }
+
+    prevPageBtn.onclick = () => goToPage(-1);
+    nextPageBtn.onclick = () => goToPage(1);
+
+    document.addEventListener('keydown', (e) => {
+      const tag = e.target.tagName;
+      const editing = e.target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+      if (e.key === 'Delete' && !editing && selectedAnnoEl) {
+        const anno = selectedAnnoEl._anno;
+        if (anno) {
+          removeAnnotationElement(selectedAnnoEl, anno);
+          e.preventDefault();
+          return;
+        }
+      }
+
+      if (!editing && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        toggleReader();
+        return;
+      }
+      if (!editing && e.key === '+') zoomInBtn.click();
+      if (!editing && e.key === '-') zoomOutBtn.click();
+
+  if (!editing && (e.key === 't' || e.key === 'T')) {
+    e.preventDefault();
+    selectTextTool.click();
+  }
+  if (!editing && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    textTool.click();
+  }
+  if (!editing && (e.key === 's' || e.key === 'S')) {
+    e.preventDefault();
+    signatureTool.click();
+  }
+  if (!editing && (e.key === 'c' || e.key === 'C')) {
+    e.preventDefault();
+    commentTool.click();
+  }
+  if (!editing && (e.key === 'w' || e.key === 'W')) {
+    e.preventDefault();
+    fitWidthBtn.click();
+  }
+
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !editing) {
+        e.preventDefault();
+        const d = e.key === 'ArrowUp' ? -120 : 120;
+        mainEl.scrollBy({ top: d, behavior: 'smooth' });
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setTool('select');
+        hideTextToolbar();
+        if (identityModal && !identityModal.classList.contains('hidden')) closeIdentityModal();
+        if (helpModal && !helpModal.classList.contains('hidden')) helpModal.classList.add('hidden');
+      }
+
+      if (readerMode) {
+        if (!editing && e.key === 'ArrowLeft') {
+          e.preventDefault();
+          goToPage(-1);
+        }
+        if (!editing && e.key === 'ArrowRight') {
+          e.preventDefault();
+          goToPage(1);
+        }
+      } else {
+        if (!editing && (e.key === 't' || e.key === 'T') && textTool) textTool.click();
+        if (!editing && (e.key === 'm' || e.key === 'M') && commentTool) commentTool.click();
+        if (!editing && (e.key === 's' || e.key === 'S') && signatureTool) signatureTool.click();
+        if (!editing && e.key === 'ArrowLeft') {
+          e.preventDefault();
+          goToPage(-1);
+        }
+        if (!editing && e.key === 'ArrowRight') {
+          e.preventDefault();
+          goToPage(1);
+        }
+      }
+    });
+
+    let textToolbarTarget = null, textToolbarAnno = null;
+
+    function positionTextToolbar(el) {
+      if (!textToolbarTarget) return;
+      const r = el.getBoundingClientRect();
+      const pr = textStylePanel.getBoundingClientRect();
+      const ph = pr.height || textStylePanel.offsetHeight || 0;
+      const pw = pr.width || textStylePanel.offsetWidth || 0;
+
+      let top = window.scrollY + r.top - ph - 8;
+      let left = window.scrollX + r.left;
+
+      if (top < 8) top = window.scrollY + r.bottom + 8;
+      const maxL = window.scrollX + document.documentElement.clientWidth - pw - 8;
+      if (left > maxL) left = maxL;
+
+      textStylePanel.style.top = Math.max(8, top) + 'px';
+      textStylePanel.style.left = Math.max(8, left) + 'px';
+    }
+
+    function showTextToolbar(el, anno) {
+      textToolbarTarget = el;
+      textToolbarAnno = anno;
+      textFontFamily.value = anno.styles.fontFamily || 'Helvetica';
+      textFontSize.value = parseInt(anno.styles.fontSize, 10) || 12;
+      textBoldBtn.classList.toggle('active', anno.styles.fontWeight === 'bold');
+      textItalicBtn.classList.toggle('active', anno.styles.fontStyle === 'italic');
+      textColor.value = anno.styles.color || '#000000';
+      textStylePanel.classList.remove('hidden');
+      positionTextToolbar(el);
+    }
+
+    function hideTextToolbar() {
+      textToolbarTarget = null;
+      textToolbarAnno = null;
+      textStylePanel.classList.add('hidden');
+    }
+
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const hamburgerMenu = document.getElementById('hamburgerMenu');
+const menuClose = document.getElementById('menuClose');
+const menuOverlay = document.getElementById('menuOverlay');
+
+hamburgerBtn.addEventListener('click', () => {
+  hamburgerMenu.classList.add('open');
+  menuOverlay.classList.add('visible');
+});
+
+menuClose.addEventListener('click', () => {
+  hamburgerMenu.classList.remove('open');
+  menuOverlay.classList.remove('visible');
+});
+
+menuOverlay.addEventListener('click', () => {
+  hamburgerMenu.classList.remove('open');
+  menuOverlay.classList.remove('visible');
+});
+
+// Close menu when any menu item is clicked
+document.querySelectorAll('.menu-item').forEach(item => {
+  item.addEventListener('click', () => {
+    hamburgerMenu.classList.remove('open');
+    menuOverlay.classList.remove('visible');
+  });
+});
+
+/* ===== Find UI: show up/down + count only when there is input ===== */
+const searchContainer = document.querySelector('.search-container');
+function updateSearchUIState() {
+  const has = (searchInput.value || '').trim().length > 0;
+  searchContainer.classList.toggle('has-query', has);
+}
+searchInput.addEventListener('input', updateSearchUIState);
+updateSearchUIState();
+
+/* ===== Page / Zoom compact boxes ===== */
+const pageBox = document.getElementById('pageBox');
+const zoomBox = document.getElementById('zoomBox');
+const zoomMenu = document.getElementById('zoomMenu');
+    function syncInfoBoxes() {
+      const pc = pdfDoc ? pdfDoc.numPages : 1;
+      const pn = pdfDoc ? clamp(currentPageIndex + 1, 1, pc) : 1;
+      
+      // Only update text content if the input isn't active
+      const pageInput = document.getElementById('pageInput');
+      if (pageBox && (!pageInput || document.activeElement !== pageInput)) {
+        pageBox.innerHTML = `${pn} / ${pc}`; // Restore original text
+        pageBox.style.padding = '6px 8px'; // Restore padding
+      } else if (pageInput) {
+        // If input exists but isn't focused (e.g., page changed via arrow key)
+        pageInput.value = pn;
+        pageInput.max = pc;
+        const pageTotal = document.getElementById('pageTotal');
+        if (pageTotal) pageTotal.textContent = `/ ${pc}`;
+      }
+      
+      zoomBox && (zoomBox.textContent = `${Math.round(currentScale * 100)}%`);
+    }
+    function updatePageInfo() { syncInfoBoxes(); }
+    syncInfoBoxes();
+   
+    /* Make pageBox editable via prompt */
+    pageBox?.addEventListener('click', (e) => {
+      if (!pdfDoc || e.target.tagName === 'INPUT') return;
+      if (document.getElementById('pageInput')) return; // Already open
+    
+      const pc = pdfDoc.numPages;
+      const pn = clamp(currentPageIndex + 1, 1, pc);
+    
+      pageBox.innerHTML = ''; // Clear "1 / 1"
+      pageBox.style.padding = '4px 6px'; // Adjust padding
+    
+      const pageInput = document.createElement('input');
+      pageInput.id = 'pageInput';
+      pageInput.type = 'number';
+      pageInput.min = '1';
+      pageInput.max = pc;
+      pageInput.value = pn;
+      pageInput.style.width = '40px';
+      pageInput.style.textAlign = 'right';
+      pageInput.style.border = '1px solid #ccc';
+      pageInput.style.borderRadius = '3px';
+      pageInput.style.fontSize = '0.85rem';
+      pageInput.style.fontFamily = 'var(--font-sans)';
+    
+      const pageTotal = document.createElement('span');
+      pageTotal.id = 'pageTotal';
+      pageTotal.style.whiteSpace = 'pre';
+      pageTotal.style.paddingLeft = '4px';
+      pageTotal.textContent = `/ ${pc}`;
+    
+      pageBox.appendChild(pageInput);
+      pageBox.appendChild(pageTotal);
+    
+      pageInput.focus();
+      pageInput.select();
+    
+      const handler = () => {
+        const n = parseInt(pageInput.value || '', 10);
+        if (!Number.isNaN(n)) {
+          goToPageNumber(n); // This will call syncInfoBoxes
+        } else {
+          syncInfoBoxes(); // Restore if invalid
+        }
+        // Remove listener to prevent memory leaks
+        pageInput.removeEventListener('blur', handler);
+        pageInput.removeEventListener('keydown', keyHandler);
+      };
+      
+      const keyHandler = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          pageInput.blur();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          pageInput.value = pn; // Reset value
+          pageInput.blur();
+        }
+      };
+    
+      pageInput.addEventListener('blur', handler, { once: true });
+      pageInput.addEventListener('keydown', keyHandler);
+    });
+
+/* ===== Zoom menu behavior ===== */
+function showZoomMenu(anchorEl) {
+  const r = anchorEl.getBoundingClientRect();
+  zoomMenu.style.left = `${window.scrollX + r.left}px`;
+  zoomMenu.style.top = `${window.scrollY + r.bottom + 6}px`;
+  zoomMenu.style.display = 'block';
+  zoomMenu.setAttribute('aria-hidden', 'false');
+}
+function hideZoomMenu() {
+  zoomMenu.style.display = 'none';
+  zoomMenu.setAttribute('aria-hidden', 'true');
+}
+function closeHamburger() {
+  document.getElementById('hamburgerMenu')?.classList.remove('open');
+  document.getElementById('menuOverlay')?.classList.remove('visible');
+}
+zoomBox?.addEventListener('click', (e) => {
+  const visible = zoomMenu.style.display === 'block';
+  if (visible) hideZoomMenu(); else showZoomMenu(e.currentTarget);
+});
+document.addEventListener('click', (e) => {
+  if (!zoomMenu.contains(e.target) && e.target !== zoomBox) hideZoomMenu();
+}, true);
+
+/* Zoom menu actions (reuse existing controls) */
+document.getElementById('zmIn')?.addEventListener('click', () => { zoomInBtn.click(); hideZoomMenu(); });
+document.getElementById('zmOut')?.addEventListener('click', () => { zoomOutBtn.click(); hideZoomMenu(); });
+document.getElementById('zmFit')?.addEventListener('click', () => { fitToAvailableWidth(); hideZoomMenu(); });
+document.getElementById('zmReader')?.addEventListener('click', () => { toggleReaderBtn.click(); hideZoomMenu(); });
+
+/* Keep boxes in sync whenever scale or page changes */
+const _origSetScale = setScale;
+setScale = function (s) { _origSetScale(s); syncInfoBoxes(); };
+const _origGoToPageNumber = goToPageNumber;
+goToPageNumber = function (n) { _origGoToPageNumber(n); syncInfoBoxes(); };
+const _origGoToPage = goToPage;
+goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
+
+/* ===== Hamburger: rebuild with only requested items & order ===== */
+(function rebuildHamburger() {
+  const mc = document.querySelector('.menu-content');
+  if (!mc) return;
+  mc.innerHTML = `
+    <button class="menu-item help-top" id="helpBtn" title="Help">
+      Help
+    </button>
+    <button class="menu-item" id="identityBtn" title="Identity">
+      Change Name/Signature
+    </button>
+    <hr class="menu-divider" style="opacity:.0">
+    <button class="menu-item" id="selectTextTool" title="Select text (T)">
+      Select (t)
+    </button>
+    <button class="menu-item" id="textTool" title="Annotate text (A)">
+      Annotate (a)
+    </button>
+    <button class="menu-item" id="commentTool" title="Add comment (C)">
+      Add Comment (c)
+    </button>
+    <button class="menu-item" id="signatureTool" title="Add signature (S)">
+      Add Signature (s)
+    </button>
+  `;
+
+   (function rebind() {
+      const byId = (x) => document.getElementById(x);
+      // Help modal
+      byId('helpBtn')?.addEventListener('click', () => {
+        byId('helpModal')?.classList.remove('hidden');
+        closeHamburger();
+      });
+      // Identity modal
+      byId('identityBtn')?.addEventListener('click', () => {
+        openIdentityModal();
+        closeHamburger();
+      });
+      // Tools
+      byId('selectTextTool')?.addEventListener('click', () => {
+        setTool(currentTool === 'selectText' ? 'select' : 'selectText');
+        closeHamburger(); // ADDED
+      });
+      byId('textTool')?.addEventListener('click', () => {
+        setTool('textOnce');
+        closeHamburger(); // ADDED
+      });
+      byId('commentTool')?.addEventListener('click', () => {
+        if (!userName) openIdentityModal(); else setTool('commentOnce');
+        closeHamburger(); // ADDED
+      });
+      byId('signatureTool')?.addEventListener('click', () => {
+        if (!signatureDataUrl) openIdentityModal(); else setTool('signatureOnce');
+        closeHamburger(); // ADDED
+      });
+    })();
+})();
+
+
+    textFontFamily.addEventListener('change', () => {
+      if (!textToolbarTarget || !textToolbarAnno) return;
+      textToolbarAnno.styles.fontFamily = textFontFamily.value;
+      textToolbarTarget.style.fontFamily = textFontFamily.value;
+    });
+    textFontSize.addEventListener('change', () => {
+      if (!textToolbarTarget || !textToolbarAnno) return;
+      const s = clamp(parseInt(textFontSize.value, 10) || 12, 8, 96);
+      textToolbarAnno.styles.fontSize = String(s);
+      textToolbarTarget.style.fontSize = s + 'px';
+    });
+    textBoldBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!textToolbarTarget || !textToolbarAnno) return;
+      const b = textToolbarAnno.styles.fontWeight === 'bold';
+      textToolbarAnno.styles.fontWeight = b ? 'normal' : 'bold';
+      textToolbarTarget.style.fontWeight = textToolbarAnno.styles.fontWeight;
+      textBoldBtn.classList.toggle('active', !b);
+    });
+    textItalicBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!textToolbarTarget || !textToolbarAnno) return;
+      const it = textToolbarAnno.styles.fontStyle === 'italic';
+      textToolbarAnno.styles.fontStyle = it ? 'normal' : 'italic';
+      textToolbarTarget.style.fontStyle = textToolbarAnno.styles.fontStyle;
+      textItalicBtn.classList.toggle('active', !it);
+    });
+    textColor.addEventListener('input', () => {
+      if (!textToolbarTarget || !textToolbarAnno) return;
+      textToolbarAnno.styles.color = textColor.value;
+      textToolbarTarget.style.color = textColor.value;
+    });
+
+    document.addEventListener('click', (e) => {
+      if (textStylePanel.contains(e.target) || (textToolbarTarget && textToolbarTarget.contains(e.target))) return;
+      hideTextToolbar();
+    });
+    window.addEventListener('scroll', () => {
+      if (textToolbarTarget) positionTextToolbar(textToolbarTarget);
+    });
+    if (mainEl) {
+      mainEl.addEventListener('scroll', () => {
+        if (textToolbarTarget) positionTextToolbar(textToolbarTarget);
+      });
+    }
+    mainEl.addEventListener('scroll', () => {
+      mainEl.classList.add('is-scrolling');
+      if (scrollTimer) clearTimeout(scrollTimer);
+
+      scrollTimer = setTimeout(() => {
+        mainEl.classList.remove('is-scrolling');
+      }, 150);
+    }, { passive: true });
+
+    identityCtx.lineCap = 'round';
+    identityCtx.lineJoin = 'round';
+    identityCtx.lineWidth = 2;
+    identityCtx.strokeStyle = '#111';
+    let identityDrawing = false;
+
+    identitySignatureCanvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      identityDrawing = true;
+      identitySignatureCanvas.setPointerCapture(e.pointerId);
+      identityCtx.beginPath();
+      identityCtx.moveTo(e.offsetX, e.offsetY);
+      identityHasInk = true;
+    });
+    identitySignatureCanvas.addEventListener('pointermove', (e) => {
+      if (identityDrawing) e.preventDefault();
+      if (!identityDrawing) return;
+      identityCtx.lineTo(e.offsetX, e.offsetY);
+      identityCtx.stroke();
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => {
+      identitySignatureCanvas.addEventListener(ev, (e) => {
+        if (ev === 'pointerup' && identitySignatureCanvas.hasPointerCapture(e.pointerId)) {
+          identitySignatureCanvas.releasePointerCapture(e.pointerId);
+        }
+        identityDrawing = false;
+      });
+    });
+    identityClear.onclick = () => {
+      identityCtx.clearRect(0, 0, identitySignatureCanvas.width, identitySignatureCanvas.height);
+      identityHasInk = false;
+    };
+    identityClose.onclick = () => closeIdentityModal();
+    identitySave.onclick = () => {
+      const name = (identityName.value || '').trim();
+      if (!name) {
+        identityName.focus();
+        return;
+      }
+      userName = name;
+      localStorage.setItem('userName', userName);
+      signatureDataUrl = identityHasInk ? identitySignatureCanvas.toDataURL('image/png') : null;
+      if (signatureDataUrl) {
+        localStorage.setItem('userSignature', signatureDataUrl);
+      } else {
+        localStorage.removeItem('userSignature');
+      }
+      updateIdentityDisplay();
+      updateToolbarStates();
+      identityModal.classList.add('hidden');
+      setTool('select');
+    };
+
+    setTool('select');
+    updateIdentityDisplay();
+    updateToolbarStates();
+
+    (function() {
+      const u = new URL(location.href);
+      const src = u.searchParams.get('src');
+      if (!src) return;
+      fetch(src)
+        .then(r => r.arrayBuffer())
+        .then(async (buf) => {
+          await loadPdfBytesArray(new Uint8Array(buf));
+        })
+        .catch(console.error);
+    })();
+
+    window.addEventListener('resize', () => {
+      dpr = window.devicePixelRatio || 1;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(async () => {
+        if (readerMode && pdfDoc) {
+          currentScale = await computeReaderFitScale();
+          await renderAll();
+          updatePageInfo();
+          updateToolbarStates();
+        } else if (pdfDoc) {
+          await renderAll();
+        }
+      }, 120);
+    });

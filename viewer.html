@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Modern PDF - Kevin Bryan</title>
+
+  <script src="lib/pdf.min.js"></script>
+  <script src="lib/pdf-lib.min.js"></script>
+  <script src="viewer.js"></script>
+
+<style>
+  :root {
+    --font-serif: 'Times New Roman', 'Times', serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --bg-color: #fffff8;
+    --text-color: #1a1a1a;
+    --border-color: #d4d4d4;
+    --editor-accent-color: #111111;
+    --editor-accent-text-color: #ffffff;
+    --editor-ui-font-family: var(--font-sans);
+    --toolbar-width: 70px;
+    --control-width: 180px;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: var(--font-serif);
+    background: var(--bg-color);
+    color: var(--text-color);
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .header {
+    position: fixed;
+    top: 2rem;
+    left: 0;
+    z-index: 50;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+  }
+
+  .reader .header {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-120%);
+    transition: opacity .2s ease, transform .25s ease;
+  }
+
+  .toolbar-sep {
+    height: 16px;
+  }
+
+  .span-2 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .hamburger-btn,
+  .icon-btn,
+  .nav-btn {
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.9);
+    font-family: var(--editor-ui-font-family);
+    font-size: 1.5rem;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color .2s, box-shadow .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .1);
+    line-height: 1;
+  }
+
+  .nav-btn.span-2 {
+    width: 100%;
+  }
+
+  .icon-btn:hover,
+  .nav-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, .15);
+  }
+
+  .nav-btn.active {
+    background: #2563eb;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, .45);
+    border-color: #1d4ed8;
+  }
+
+  .icon-btn i,
+  .nav-btn i {
+    pointer-events: none;
+    font-size: 1rem;
+    line-height: 1;
+    width: 100%;
+    text-align: center;
+  }
+
+  .icon-btn img {
+    pointer-events: none;
+    width: 20px;
+    height: 20px;
+    display: block;
+  }
+
+  .nav-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+
+  .nav-info {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    color: #666;
+    font-weight: 500;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .1);
+  }
+
+  /* Hamburger Menu */
+  .hamburger-menu {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 300px;
+    height: 100vh;
+    background: var(--bg-color);
+    border-right: 1px solid var(--border-color);
+    z-index: 1000;
+    transition: left 0.3s ease;
+    overflow-y: auto;
+  }
+
+  .hamburger-menu.open {
+    left: 0;
+  }
+
+  .menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 999;
+    display: none;
+  }
+
+  .menu-overlay.visible {
+    display: block;
+  }
+
+  .menu-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .menu-header h2 {
+    font-size: 1.2rem;
+    font-weight: 500;
+  }
+
+  .menu-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .menu-content {
+    padding: 20px;
+  }
+
+  .menu-item {
+    width: 100%;
+    padding: 12px 16px;
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    font-family: var(--font-sans);
+  }
+
+  .menu-item:hover {
+    background: #f0f0f0;
+  }
+
+  .menu-divider {
+    margin: 20px 0;
+    border: none;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .main {
+    flex: 1;
+    overflow: auto;
+    padding: 24px 24px 48px calc(var(--control-width) + 28px);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .main.is-scrolling .textLayer {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .page,
+  .layer,
+  .textLayer {
+    will-change: transform;
+    contain: layout paint;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .page {
+    content-visibility: auto;
+    contain-intrinsic-size: 1122px 794px;
+  }
+
+  .reader .main {
+    padding: 10px 10px 10px 10px;
+  }
+
+  #pages {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .page {
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .1);
+    background: #fff;
+  }
+
+  .page canvas {
+    display: block;
+    background: #fff;
+  }
+
+  .layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+    transform-origin: 0 0;
+  }
+
+  .textLayer {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+    pointer-events: none;
+    user-select: text;
+    --scale-factor: 1;
+  }
+
+  .textLayer span::selection {
+    background: rgba(0, 123, 255, 0.3);
+  }
+
+  .textLayer span::-moz-selection {
+    background: rgba(0, 123, 255, 0.3);
+  }
+
+  .textLayer.hidden {
+    display: none;
+  }
+
+  .textLayer > span,
+  .textLayer > div {
+    position: absolute;
+    transform-origin: 0 0;
+    white-space: pre;
+    line-height: 1;
+    font-size: 1px;
+    color: transparent;
+  }
+
+  .text-anno,
+  .sig-anno,
+  .comment-pin {
+    position: absolute;
+    pointer-events: auto;
+    cursor: move;
+  }
+
+  .text-anno {
+    background: transparent;
+    border: none;
+    min-width: 120px;
+    min-height: 24px;
+    outline: none;
+    color: #000;
+  }
+
+  .text-anno:focus,
+  .text-anno.selected,
+  .sig-anno.selected,
+  .comment-pin.selected {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+
+  .sig-anno {
+    background: transparent;
+    border: none;
+    display: inline-flex;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .sig-anno img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .sig-anno .resize-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #2563eb;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+    cursor: se-resize;
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+
+  .sig-anno:hover .resize-handle,
+  .sig-anno.selected .resize-handle {
+    opacity: 1;
+  }
+
+  .comment-pin {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #2563eb;
+    border: 1px solid #1d4ed8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    cursor: move;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+  }
+
+  .comment-pin i {
+    pointer-events: none;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .comment-pin.selected {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+  }
+
+  #commentSidebar {
+    position: fixed;
+    top: 0;
+    right: -380px;
+    width: 360px;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.9);
+    border-left: 1px solid var(--border-color);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, .15);
+    transition: right .25s;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #commentSidebar.open {
+    right: 0;
+  }
+
+  .cs-thread {
+    flex: 1;
+    overflow: auto;
+    padding: 10px 14px;
+  }
+
+  .cs-item {
+    border-bottom: 1px solid #eee;
+    padding: 8px 0;
+  }
+
+  .cs-item:last-child {
+    border-bottom: none;
+  }
+
+  .cs-item.reply {
+    margin-left: 14px;
+    border-left: 2px solid #eee;
+    padding-left: 8px;
+  }
+
+  .cs-author {
+    font-weight: 600;
+    color: #2563eb;
+    font-size: .85rem;
+  }
+
+  .cs-time {
+    font-size: .75rem;
+    color: #666;
+  }
+
+  .cs-text {
+    white-space: pre-wrap;
+    margin-top: 2px;
+  }
+
+  .cs-input {
+    border-top: 1px solid var(--border-color);
+    padding: 10px 14px;
+  }
+
+  .cs-input input,
+  .cs-input textarea {
+    width: 100%;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+
+  .cs-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .cs-actions .nav-btn {
+    flex: 1;
+    height: 36px;
+    width: auto;
+  }
+
+  .reader-hint {
+    position: fixed;
+    top: 10px;
+    right: 12px;
+    z-index: 40;
+    background: rgba(255, 255, 255, .9);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--font-sans);
+    font-size: .8rem;
+    color: #444;
+    display: none;
+  }
+
+  .reader .reader-hint {
+    display: block;
+  }
+
+  .nav-btn.primary-btn {
+    background: #2563eb;
+    color: #fff;
+    border-color: #1d4ed8;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, .45);
+  }
+
+  .nav-btn.primary-btn:hover {
+    background: #1d4ed8;
+    color: #fff;
+  }
+
+  .nav-btn.ghost-btn {
+    background: #f5f5f5;
+    color: #1a1a1a;
+    border-color: #d4d4d4;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .1);
+  }
+
+  .nav-btn.ghost-btn:hover {
+    background: #fff;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, .18);
+  }
+
+  #file {
+    display: none;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  .floating-panel {
+    position: fixed;
+    z-index: 120;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .25);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-family: var(--font-sans);
+  }
+
+  .floating-panel label {
+    display: flex;
+    flex-direction: column;
+    font-size: .75rem;
+    gap: 4px;
+    color: #333;
+    min-width: 90px;
+  }
+
+  .floating-panel select,
+  .floating-panel input[type="number"] {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: .85rem;
+    font-family: inherit;
+  }
+
+  .floating-panel input[type="color"] {
+    width: 36px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
+
+  .toggle-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .mini-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: #f5f5f5;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .9rem;
+    line-height: 1;
+  }
+
+  .mini-btn.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+
+  .mini-btn i {
+    pointer-events: none;
+  }
+
+  .color-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .75rem;
+    color: #333;
+  }
+  
+  #leftBar { position: fixed; }
+
+  .search-container,
+  .info-group { width: var(--control-width); max-width: var(--control-width); }
+
+  .search-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .search-container:not(.has-query) .search-controls,
+  .search-container:not(.has-query) #searchStatus { display: none; }
+
+  #searchInput {
+    width: 100%;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    color: var(--text-color);
+    padding: 6px 8px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+
+  #searchInput::placeholder {
+    color: #999;
+  }
+
+  .search-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .search-controls .nav-btn {
+    flex: 1 1 calc(50% - 4px); 
+  }
+
+  #searchStatus {
+    order: 2;
+    text-align: center;
+    padding: 4px 8px;
+    min-height: 30px;
+    line-height: 1.2;
+    flex: 0 0 100%;
+  }
+
+  .search-highlight {
+    position: absolute;
+    background: rgba(255, 255, 0, 0.4);
+    border-radius: 2px;
+    pointer-events: none;
+    transition: background .15s;
+  }
+
+  .search-highlight.current-match {
+    background: rgba(255, 165, 0, 0.6);
+    box-shadow: 0 0 4px rgba(0, 0, 0, .5);
+  }
+
+/* --- Info boxes (page / zoom) --- */
+.info-group { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.info-box {
+  background: rgba(255,255,255,.9);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: 500 0.85rem var(--font-sans);
+  color: #666;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,.1);
+  width: 100%;
+}
+.info-box:focus { outline: 2px solid #2563eb; }
+
+/* --- Zoom menu --- */
+.zoom-menu {
+  position: fixed; z-index: 200;
+  background: #fff; border: 1px solid var(--border-color);
+  border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,.25);
+  padding: 6px; display: none; min-width: 160px;
+}
+.zoom-menu button {
+  display: flex; width: 100%; gap: 8px; align-items: center;
+  background: none; border: 0; padding: 8px 10px; cursor: pointer;
+  font: 500 .9rem var(--font-sans); color: #1a1a1a; border-radius: 6px;
+}
+.zoom-menu button:hover { background: #f5f5f5; }
+
+.menu-item.help-top {
+  background: #111; color: #fff; border-color: #111; font-weight: 600;
+}
+
+  .signature-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 130;
+  }
+
+  .signature-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, .35);
+    width: min(90vw, 460px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-family: var(--font-sans);
+  }
+
+  .signature-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .signature-card h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .identity-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: .85rem;
+    color: #333;
+  }
+
+  .identity-field input {
+    border: 1px solid #d4d4d4;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 1rem;
+    font-family: var(--font-sans);
+  }
+
+  .signature-label {
+    font-size: .85rem;
+    color: #555;
+  }
+
+  .signature-card canvas {
+    width: 100%;
+    height: auto;
+    border: 1px solid #d4d4d4;
+    border-radius: 8px;
+    background: #fff;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .signature-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .signature-actions .nav-btn {
+    width: auto;
+    height: 36px;
+    font-size: .85rem;
+    padding: 0 16px;
+    line-height: 1;
+    box-shadow: none;
+  }
+
+  .signature-actions .nav-btn.primary-btn {
+    box-shadow: none;
+  }
+
+  .signature-hint {
+    font-size: .75rem;
+    color: #555;
+    text-align: left;
+  }
+
+  .help-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 140;
+  }
+
+  .help-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, .35);
+    width: min(92vw, 420px);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+  }
+
+  .help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .help-header h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  .help-body {
+    padding: 18px 20px 22px 20px;
+    overflow: auto;
+    font-size: .9rem;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .help-body h3 {
+    font-size: .95rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #1a1a1a;
+  }
+
+  .help-body ul {
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .help-body li strong {
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  @media (max-width: 800px) {
+    :root {
+      --toolbar-width: 60px;
+    }
+
+    .main {
+      padding-left: max(64px, calc(var(--toolbar-width) - 24px));
+    }
+
+    .icon-btn,
+    .nav-btn {
+      width: 36px;
+      height: 36px;
+      font-size: 1.2rem;
+      padding: 6px;
+    }
+  }
+
+  @media print {
+    body > .app > .header,
+    body > .reader-hint,
+    body > #commentSidebar,
+    body > #helpModal,
+    body > #identityModal,
+    body > #textStylePanel {
+      display: none !important;
+    }
+    .comment-pin { display: none !important; }
+
+    body {
+      background: none !important;
+      color: #000 !important;
+      overflow: visible !important;
+    }
+
+    .main {
+      padding: 0 !important;
+      overflow: visible !important;
+      width: 100% !important;
+      height: auto !important;
+    }
+
+    #pages {
+      display: block !important;
+      gap: 0 !important;
+    }
+
+    .page {
+      box-shadow: none !important;
+      margin: 0 auto !important;
+      page-break-after: always;
+      width: 100% !important;
+      height: auto !important;
+      contain-intrinsic-size: auto !important;
+    }
+
+    .page canvas {
+      width: 100% !important; /* Force style width to 100% */
+      height: auto !important;
+      max-width: 100% !important;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+    }
+
+    .textLayer {
+      visibility: visible !important;
+    }
+
+    .layer, .textLayer {
+      /* Reset transforms and dimensions set by JS */
+      transform: none !important;
+      scale: 1 !important;
+      width: 100% !important;
+      height: 100% !important;
+      top: 0 !important;
+      left: 0 !important;
+    }
+
+    .text-anno, .sig-anno, .comment-pin {
+      outline: none !important;
+    }
+  }
+</style>
+</head>
+
+<body>
+  <div class="app">
+<div class="header" id="leftBar">
+  <button class="hamburger-btn" id="hamburgerBtn">☰</button>
+  <button class="nav-btn icon-btn" id="openBtn" title="Open PDF (O)">
+    <i class="fa-solid fa-folder-open"></i>
+  </button>
+  <input id="file" type="file" accept="application/pdf"/>
+  <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled>
+    <i class="fa-solid fa-download"></i>
+  </button>
+
+  <div class="toolbar-sep" aria-hidden="true"></div>
+
+  <div class="search-container span-2">
+    <input type="text" id="searchInput" placeholder="Find..." />
+    <div class="search-controls">
+      <button class="nav-btn icon-btn" id="searchPrevBtn" title="Previous match" disabled>
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+      <span id="searchStatus" class="nav-info">0 / 0</span>
+      <button class="nav-btn icon-btn" id="searchNextBtn" title="Next match" disabled>
+        <i class="fa-solid fa-arrow-down"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="toolbar-sep" aria-hidden="true"></div>
+
+  <div id="infoGroup" class="info-group">
+    <button id="pageBox" class="info-box" title="Go to page">1 / 1</button>
+    <button id="zoomBox" class="info-box" title="Zoom options">100%</button>
+  </div>
+</div>
+
+<div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
+  <button id="zmIn"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom in</button>
+  <button id="zmOut"><i class="fa-solid fa-magnifying-glass-minus"></i> Zoom out</button>
+  <button id="zmFit"><i class="fa-solid fa-left-right"></i> Fit width</button>
+  <button id="zmReader"><i class="fa-solid fa-book-open-reader"></i> Reader mode</button>
+</div>
+
+<!-- Hamburger Menu -->
+<div class="hamburger-menu" id="hamburgerMenu">
+  <div class="menu-header">
+    <h2>Modern PDF</h2>
+    <button class="menu-close" id="menuClose">×</button>
+  </div>
+  <div class="menu-content">
+    <button class="menu-item" id="selectTextTool" title="Select text (T)">
+      <i class="fa-solid fa-i-cursor"></i> Select Text
+    </button>
+    <button class="menu-item" id="textTool" title="Add text (A)">
+      <i class="fa-solid fa-font"></i> Add Text
+    </button>
+    <button class="menu-item" id="signatureTool" title="Add signature (S)">
+      <i class="fa-solid fa-pen-fancy"></i> Add Signature
+    </button>
+    <button class="menu-item" id="commentTool" title="Add comment (C)">
+      <i class="fa-solid fa-comment-dots"></i> Add Comment
+    </button>
+    
+    <hr class="menu-divider">
+    
+    <button class="menu-item" id="zoomOutBtn" title="Zoom out (-)">
+      <i class="fa-solid fa-magnifying-glass-minus"></i> Zoom Out
+    </button>
+    <button class="menu-item" id="zoomInBtn" title="Zoom in (+)">
+      <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom In
+    </button>
+    <button class="menu-item" id="fitWidthBtn" title="Fit width (W)">
+      <i class="fa-solid fa-left-right"></i> Fit Width
+    </button>
+    <button class="menu-item" id="toggleReaderBtn" title="Full screen (F)">
+      <i class="fa-solid fa-maximize"></i> Full Screen
+    </button>
+    <button class="menu-item" id="prevPageBtn" title="Previous page">
+      <i class="fa-solid fa-arrow-left"></i> Previous Page
+    </button>
+    <button class="menu-item" id="nextPageBtn" title="Next page">
+      <i class="fa-solid fa-arrow-right"></i> Next Page
+    </button>
+    
+    <hr class="menu-divider">
+    
+    <button class="menu-item" id="identityBtn" title="Set name & signature">
+      <i class="fa-solid fa-user"></i> Set Identity
+    </button>
+    <button class="menu-item" id="helpBtn" title="Help">
+      <i class="fa-solid fa-question"></i> Help
+    </button>
+  </div>
+</div>
+<div class="menu-overlay" id="menuOverlay"></div>
+    <div class="main" id="main">
+      <div id="pages"></div>
+    </div>
+  </div>
+
+  <div class="reader-hint">Full screen reading. ←/→ prev/next page · ↑/↓ scroll · E to exit</div>
+
+  <aside id="commentSidebar">
+    <div class="cs-thread" id="csThread"></div>
+
+    <div class="cs-input">
+      <span>Commenting as <strong id="csAuthorName">Guest</strong></span>
+      <textarea id="csText" placeholder="Write a comment..."></textarea>
+      <div class="cs-actions">
+        <button class="nav-btn" id="csPost">Post</button>
+        <button class="nav-btn" id="csReplyClose">Hide</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="helpModal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="help-card">
+      <header class="help-header">
+        <h2 id="helpTitle">Modern PDF</h2>
+        <button id="helpClose" class="mini-btn" title="Close help">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+<div class="help-body">
+  <strong>"Lightweight PDF view/edit"</strong> (October 2025)
+  <p>Created by <strong>Kevin Bryan</strong><br>
+  Associate Professor of Strategic Management, University of Toronto<br>
+  Co-founder, All Day TA</p>
+  <h3>Navigation</h3>
+  <ul>
+    <li>Zoom with +/-</li>
+    <li><strong>R:</strong> Toggle full-screen reader</li>
+    <li><strong>W:</strong> Fit width</li>
+  </ul>
+  <h3>Tools</h3>
+  <ul>
+    <li><strong>T:</strong> Text selection mode</li>
+    <li><strong>A:</strong> Add text annotation</li>
+    <li><strong>S:</strong> Add signature</li>
+    <li><strong>C:</strong> Add comment</li>
+  </ul>
+</div>
+    </div>
+  </div>
+
+  <div id="textStylePanel" class="floating-panel hidden">
+    <label>
+      Font
+      <select id="textFontFamily">
+        <option value="Helvetica">Helvetica</option>
+        <option value="Times New Roman">Times</option>
+        <option value="Courier New">Courier</option>
+      </select>
+    </label>
+    <label>
+      Size
+      <input id="textFontSize" type="number" min="8" max="96" step="1" value="12"/>
+    </label>
+    <div class="toggle-row">
+      <button id="textBoldBtn" class="mini-btn" title="Bold">B</button>
+      <button id="textItalicBtn" class="mini-btn" title="Italic">I</button>
+    </div>
+    <label class="color-row">
+      <span>Color</span>
+      <input id="textColor" type="color" value="#000000"/>
+    </label>
+  </div>
+
+  <div id="identityModal" class="signature-modal hidden" role="dialog" aria-modal="true">
+    <div class="signature-card">
+      <header>
+        <h2>Your identity</h2>
+        <button id="identityClose" class="mini-btn" title="Close">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      <label class="identity-field">
+        <span>Name</span>
+        <input id="identityName" type="text" placeholder="Your name" autocomplete="name" />
+      </label>
+      <div class="signature-label">Signature</div>
+      <canvas id="identitySignatureCanvas" width="400" height="160"></canvas>
+      <div class="signature-actions">
+        <button id="identityClear" class="nav-btn ghost-btn">Clear signature</button>
+        <button id="identitySave" class="nav-btn primary-btn">Save</button>
+      </div>
+      <p class="signature-hint">Your name is used for comments. Draw or update your signature here.</p>
+    </div>
+  </div>
+</body>
+</html>
