@@ -10,7 +10,9 @@
     "tabs",
     "storage",
     "declarativeNetRequest",
-    "declarativeNetRequestWithHostAccess"
+    "declarativeNetRequestWithHostAccess",
+    "downloads",
+    "webNavigation"
   ],
   "host_permissions": [
     "<all_urls>"

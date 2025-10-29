@@ -37,8 +37,122 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
 
     const el = (id) => document.getElementById(id);
     const pagesEl = el('pages'), mainEl = el('main');
+    let loadErrorBanner = document.getElementById('loadErrorBanner');
+    let loadErrorMessage = document.getElementById('loadErrorMessage');
+    let loadErrorCopy = document.getElementById('loadErrorCopy');
+    let loadErrorCopyDefaultText = loadErrorCopy ? loadErrorCopy.textContent : 'Copy PDF link';
+    let pendingLoadError = null;
+    let loadErrorDomReadyListenerAttached = false;
 
 const leftBar = document.getElementById('leftBar');
+
+    function ensureLoadErrorElements() {
+      if (!loadErrorBanner) {
+        loadErrorBanner = document.getElementById('loadErrorBanner');
+      }
+      if (!loadErrorMessage) {
+        loadErrorMessage = document.getElementById('loadErrorMessage');
+      }
+      if (!loadErrorCopy) {
+        loadErrorCopy = document.getElementById('loadErrorCopy');
+      }
+      if (loadErrorCopy) {
+        loadErrorCopyDefaultText = loadErrorCopy.textContent || loadErrorCopyDefaultText;
+      }
+    }
+
+    function hideLoadError() {
+      ensureLoadErrorElements();
+      pendingLoadError = null;
+      if (loadErrorBanner) {
+        loadErrorBanner.classList.add('hidden');
+      }
+      if (loadErrorCopy) {
+        loadErrorCopy.disabled = true;
+        loadErrorCopy.dataset.sourceUrl = '';
+        loadErrorCopy.textContent = loadErrorCopyDefaultText;
+      }
+    }
+
+    function showLoadError(message, sourceUrl) {
+      ensureLoadErrorElements();
+      if (!loadErrorBanner || !loadErrorMessage) {
+        pendingLoadError = { message, sourceUrl };
+        if (!loadErrorDomReadyListenerAttached && document.readyState === 'loading') {
+          loadErrorDomReadyListenerAttached = true;
+          document.addEventListener('DOMContentLoaded', () => {
+            const pending = pendingLoadError;
+            pendingLoadError = null;
+            if (pending) {
+              showLoadError(pending.message, pending.sourceUrl);
+            }
+          }, { once: true });
+        }
+        return;
+      }
+      if (pendingLoadError && pendingLoadError.message === message && pendingLoadError.sourceUrl === sourceUrl) {
+        pendingLoadError = null;
+      }
+      loadErrorMessage.textContent = message;
+      if (loadErrorCopy) {
+        if (sourceUrl) {
+          loadErrorCopy.disabled = false;
+          loadErrorCopy.dataset.sourceUrl = sourceUrl;
+        } else {
+          loadErrorCopy.disabled = true;
+          loadErrorCopy.dataset.sourceUrl = '';
+        }
+        loadErrorCopy.textContent = loadErrorCopyDefaultText;
+      }
+      loadErrorBanner.classList.remove('hidden');
+    }
+
+    function sendRuntimeMessage(message) {
+      return new Promise((resolve, reject) => {
+        if (!chrome.runtime?.sendMessage) {
+          reject(new Error('Extension messaging is unavailable.'));
+          return;
+        }
+        try {
+          chrome.runtime.sendMessage(message, (response) => {
+            const err = chrome.runtime.lastError;
+            if (err) {
+              reject(err);
+            } else {
+              resolve(response);
+            }
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    function attachLoadErrorCopyHandler() {
+      ensureLoadErrorElements();
+      if (!loadErrorCopy || loadErrorCopy.dataset.handlerAttached === '1') {
+        return;
+      }
+      loadErrorCopy.dataset.handlerAttached = '1';
+      loadErrorCopy.addEventListener('click', async () => {
+        const url = loadErrorCopy.dataset.sourceUrl;
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          loadErrorCopy.textContent = 'Copied!';
+          setTimeout(() => {
+            loadErrorCopy.textContent = loadErrorCopyDefaultText;
+          }, 1500);
+        } catch (err) {
+          console.warn('Clipboard copy failed, falling back to prompt', err);
+          window.prompt('Copy PDF URL:', url);
+        }
+      });
+    }
+
+    attachLoadErrorCopyHandler();
+    document.addEventListener('DOMContentLoaded', attachLoadErrorCopyHandler, { once: true });
+
     function setControlWidth() {
       const lb = leftBar?.getBoundingClientRect();
 
@@ -2005,16 +2119,57 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
     updateIdentityDisplay();
     updateToolbarStates();
 
-    (function() {
-      const u = new URL(location.href);
-      const src = u.searchParams.get('src');
-      if (!src) return;
-      fetch(src)
-        .then(r => r.arrayBuffer())
-        .then(async (buf) => {
-          await loadPdfBytesArray(new Uint8Array(buf));
-        })
-        .catch(console.error);
+    (async function initialiseViewerSource() {
+      let sourceUrl = null;
+      try {
+        const u = new URL(location.href);
+        sourceUrl = u.searchParams.get('src');
+      } catch (err) {
+        console.warn('Unable to parse viewer location', err);
+      }
+
+      if ((!sourceUrl || !sourceUrl.trim()) && isExtension && chrome.runtime?.sendMessage) {
+        try {
+          const response = await sendRuntimeMessage({ action: 'getPdfUrl' });
+          if (response?.pdfUrl) {
+            sourceUrl = response.pdfUrl;
+          }
+        } catch (err) {
+          console.warn('Failed to resolve PDF URL from background', err);
+        }
+      }
+
+      if (!sourceUrl || !sourceUrl.trim()) {
+        showLoadError('No PDF source was provided for this viewer tab.', null);
+        return;
+      }
+
+      sourceUrl = sourceUrl.trim();
+      hideLoadError();
+
+      try {
+        let bytes = null;
+        if (isExtension && chrome.runtime?.sendMessage) {
+          const response = await sendRuntimeMessage({ action: 'fetchPdf', url: sourceUrl });
+          if (!response?.success || !Array.isArray(response.data)) {
+            throw new Error(response?.error || 'Failed to retrieve PDF from extension background.');
+          }
+          bytes = new Uint8Array(response.data);
+        } else {
+          const res = await fetch(sourceUrl);
+          if (!res.ok) {
+            throw new Error(`Failed to load PDF (status ${res.status})`);
+          }
+          const buf = await res.arrayBuffer();
+          bytes = new Uint8Array(buf);
+        }
+
+        await loadPdfBytesArray(bytes);
+        hideLoadError();
+      } catch (err) {
+        console.error('Failed to load PDF', err);
+        showLoadError(err?.message || 'Failed to load PDF.', sourceUrl);
+      }
     })();
 
     window.addEventListener('resize', () => {
