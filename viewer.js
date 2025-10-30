@@ -584,82 +584,102 @@ function goToPageNumber(n){
         if (Array.isArray(list)) for (const a of list) if (a.id >= maxId) maxId = a.id + 1;
       }
 
+      // Process all pages in parallel
+      const pagePromises = [];
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
-        const vp = page.getViewport({ scale: 1 });
-        const ph = vp.height;
+        pagePromises.push(
+          (async (pNum) => {
+            const page = await pdfDoc.getPage(pNum);
+            const vp = page.getViewport({ scale: 1 });
+            const ph = vp.height;
 
-        const annots = await page.getAnnotations({ intent: 'display' });
-        if (!annots || !annots.length) continue;
+            const annots = await page.getAnnotations({ intent: 'display' });
+            if (!annots || !annots.length) return null;
 
-        const texts = annots.filter(an =>
-          (an.subtype || an.subType || an.annotationType) === 'Text' || an.annotationType === 1
-        );
-        if (!texts.length) continue;
+            const texts = annots.filter(an =>
+              (an.subtype || an.subType || an.annotationType) === 'Text' || an.annotationType === 1
+            );
+            if (!texts.length) return null;
 
-        const byId = new Map();
-        const getId = (an) => an.id || an.annotationId || (an.ref ? String(an.ref) : null);
-        for (const an of texts) {
-          const id = getId(an);
-          if (id) byId.set(id, { ...an });
-        }
+            const byId = new Map();
+            const getId = (an) => an.id || an.annotationId || (an.ref ? String(an.ref) : null);
+            for (const an of texts) {
+              const id = getId(an);
+              if (id) byId.set(id, { ...an });
+            }
 
-        const rootOf = (id) => {
-          let cur = byId.get(id), safety = 0;
-          while (cur && cur.inReplyTo && byId.has(cur.inReplyTo) && safety++ < 32) {
-            cur = byId.get(cur.inReplyTo);
-          }
-          return cur;
-        };
-
-        const groups = new Map();
-        for (const an of byId.values()) {
-          const root = an.inReplyTo ? rootOf(an.inReplyTo) : an;
-          const rootId = getId(root);
-          if (!rootId) continue;
-          let g = groups.get(rootId);
-          if (!g) {
-            g = { root: root, replies: [] };
-            groups.set(rootId, g);
-          }
-          if (an !== root) g.replies.push(an);
-        }
-
-        for (const g of groups.values()) {
-          const r = (g.root.rect || []).map(Number);
-          if (r.length < 4) continue;
-          const left = Math.min(r[0], r[2]);
-          const top = Math.max(r[1], r[3]);
-          const x = left, y = ph - top;
-
-          const thread = [];
-          const rootAuthor = getAuthor(g.root) || 'Imported Author';
-          const rootText = (g.root.contentsObj?.str || g.root.contents || g.root.content || '').trim();
-          if (rootText) thread.push({ author: rootAuthor, text: rootText, time: '' });
-
-          const sortedReplies = g.replies.sort((a, b) => (a.creationDate || '').localeCompare(b.creationDate || ''));
-
-          for (const rep of sortedReplies) {
-            const repAuthor = getAuthor(rep) || 'Imported Author';
-            const repText = (rep.contentsObj?.str || rep.contents || rep.content || '').trim();
-            if (repText) thread.push({ author: repAuthor, text: repText, time: '' });
-          }
-
-          if (thread.length > 0) {
-            const anno = {
-              id: maxId++,
-              type: 'comment',
-              page: pageNum,
-              x,
-              y,
-              thread,
-              origin: 'pdf',
-              _importedCount: thread.length
+            const rootOf = (id) => {
+              let cur = byId.get(id), safety = 0;
+              while (cur && cur.inReplyTo && byId.has(cur.inReplyTo) && safety++ < 32) {
+                cur = byId.get(cur.inReplyTo);
+              }
+              return cur;
             };
-            (annotations[String(pageNum)] || (annotations[String(pageNum)] = [])).push(anno);
-          }
+
+            const groups = new Map();
+            for (const an of byId.values()) {
+              const root = an.inReplyTo ? rootOf(an.inReplyTo) : an;
+              const rootId = getId(root);
+              if (!rootId) continue;
+              let g = groups.get(rootId);
+              if (!g) {
+                g = { root: root, replies: [] };
+                groups.set(rootId, g);
+              }
+              if (an !== root) g.replies.push(an);
+            }
+
+            const pageAnnotations = [];
+            for (const g of groups.values()) {
+              const r = (g.root.rect || []).map(Number);
+              if (r.length < 4) continue;
+              const left = Math.min(r[0], r[2]);
+              const top = Math.max(r[1], r[3]);
+              const x = left, y = ph - top;
+
+              const thread = [];
+              const rootAuthor = getAuthor(g.root) || 'Imported Author';
+              const rootText = (g.root.contentsObj?.str || g.root.contents || g.root.content || '').trim();
+              if (rootText) thread.push({ author: rootAuthor, text: rootText, time: '' });
+
+              const sortedReplies = g.replies.sort((a, b) => (a.creationDate || '').localeCompare(b.creationDate || ''));
+
+              for (const rep of sortedReplies) {
+                const repAuthor = getAuthor(rep) || 'Imported Author';
+                const repText = (rep.contentsObj?.str || rep.contents || rep.content || '').trim();
+                if (repText) thread.push({ author: repAuthor, text: repText, time: '' });
+              }
+
+              if (thread.length > 0) {
+                pageAnnotations.push({
+                  page: pNum,
+                  x,
+                  y,
+                  thread,
+                  origin: 'pdf',
+                  _importedCount: thread.length
+                });
+              }
+            }
+            return { pageNum: pNum, annotations: pageAnnotations };
+          })(pageNum)
+        );
+      }
+
+      // Wait for all pages to complete
+      const results = await Promise.all(pagePromises);
+      
+      // Now assign IDs and add to annotations object
+      for (const result of results) {
+        if (!result || !result.annotations.length) continue;
+        const pageKey = String(result.pageNum);
+        if (!annotations[pageKey]) annotations[pageKey] = [];
+        for (const anno of result.annotations) {
+          anno.id = maxId++;
+          annotations[pageKey].push(anno);
         }
       }
+      
       nextAnnoId = maxId;
     }
 
@@ -745,9 +765,9 @@ function goToPageNumber(n){
     }
 
     async function loadPdfBytesArray(buf) {
-      const data = buf instanceof Uint8Array ? Uint8Array.from(buf) : new Uint8Array(buf);
-      pdfBytes = Uint8Array.from(data);
-      originalPdfBytes = Uint8Array.from(data);
+      const data = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+      pdfBytes = data; // No need to copy on load
+      originalPdfBytes = null; // Only copy when we need to save
 
       const loading = pdfjsLib.getDocument({ data: pdfBytes });
       pdfDoc = await loading.promise;
@@ -762,7 +782,8 @@ function goToPageNumber(n){
       readerPrevScale = 1;
       currentPageIndex = 0;
 
-      await renderAll();
+      // Use windowing - only render visible pages initially
+      await renderWindowAroundCurrent();
       setTool('select');
       hideTextToolbar();
       clearSearch();
@@ -1624,6 +1645,7 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       if (!pdfDoc) return;
 
       const entering = !readerMode;
+
       if (entering) {
         readerPrevScale = currentScale;
         readerMode = true;
@@ -1631,11 +1653,23 @@ fitWidthBtn.onclick = fitToAvailableWidth;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-
-        if (document.fullscreenElement == null) {
-          const req = document.documentElement.requestFullscreen;
-          if (typeof req === 'function') {
-            Promise.resolve(req.call(document.documentElement)).catch(() => {});
+        
+        // Request fullscreen - try both iframe and top-level document
+        if (document.fullscreenEnabled) {
+          try {
+            // First try to fullscreen the entire document (works when in iframe with allow="fullscreen")
+            await document.documentElement.requestFullscreen();
+          } catch (err) {
+            // If that fails, try parent window (if we're in an iframe)
+            if (window.self !== window.top && window.parent?.document?.documentElement?.requestFullscreen) {
+              try {
+                await window.parent.document.documentElement.requestFullscreen();
+              } catch (e) {
+                console.warn('Fullscreen not available:', e);
+              }
+            } else {
+              console.warn('Fullscreen request denied:', err);
+            }
           }
         }
       } else {
@@ -1644,9 +1678,20 @@ fitWidthBtn.onclick = fitToAvailableWidth;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-
-        if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
-          document.exitFullscreen().catch?.(() => {});
+        
+        // Exit fullscreen
+        if (document.fullscreenElement) {
+          try {
+            await document.exitFullscreen();
+          } catch (err) {
+            console.warn('Exit fullscreen failed:', err);
+          }
+        } else if (window.parent?.document?.fullscreenElement) {
+          try {
+            await window.parent.document.exitFullscreen();
+          } catch (err) {
+            console.warn('Exit parent fullscreen failed:', err);
+          }
         }
       }
       updateToolbarStates();
@@ -1654,6 +1699,8 @@ fitWidthBtn.onclick = fitToAvailableWidth;
     }
 
     toggleReaderBtn && toggleReaderBtn.addEventListener('click', () => toggleReader());
+    
+    // Listen for fullscreen changes to sync reader mode
     document.addEventListener('fullscreenchange', async () => {
       if (!document.fullscreenElement && readerMode) {
         readerMode = false;
@@ -1723,6 +1770,12 @@ fitWidthBtn.onclick = fitToAvailableWidth;
   if (!editing && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
     fitWidthBtn.click();
+  }
+  if (!editing && (e.key === 'p' || e.key === 'P')) {
+    e.preventDefault();
+    if (pdfDoc) {
+      prepareForPrint().then(() => window.print());
+    }
   }
 
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !editing) {
@@ -1976,6 +2029,9 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
     <button class="menu-item" id="identityBtn" title="Identity">
       Change Name/Signature
     </button>
+    <button class="menu-item" id="printBtn" title="Print (P)">
+      Print (p)
+    </button>
     <hr class="menu-divider" style="opacity:.0">
     <button class="menu-item" id="selectTextTool" title="Select text (T)">
       Select (t)
@@ -2002,6 +2058,13 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       byId('identityBtn')?.addEventListener('click', () => {
         openIdentityModal();
         closeHamburger();
+      });
+      // Print button - prepare all pages then print
+      byId('printBtn')?.addEventListener('click', async () => {
+        closeHamburger();
+        if (!pdfDoc) return;
+        await prepareForPrint();
+        window.print();
       });
       // Tools
       byId('selectTextTool')?.addEventListener('click', () => {
@@ -2187,6 +2250,67 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
         showLoadError(err?.message || 'Failed to load PDF.', sourceUrl);
       }
     })();
+
+// Force render all pages before printing
+    let printPrepared = false;
+    
+    async function prepareForPrint() {
+      if (!pdfDoc || printPrepared) return;
+      printPrepared = true;
+      
+      // Cancel all ongoing render tasks
+      cancelAllPageRenders();
+      
+      // Disable reader mode temporarily
+      const wasInReader = readerMode;
+      if (readerMode) {
+        readerMode = false;
+      }
+      
+      // Ensure all page slots exist and show them
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const slot = ensurePageSlot(i);
+        const wrap = slot.canvas.parentElement;
+        if (wrap) wrap.style.display = 'block';
+      }
+      
+      // Force render all pages
+      const promises = [];
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        promises.push(renderPage(i).catch(e => console.warn('Print render failed for page', i, e)));
+      }
+      await Promise.all(promises);
+      
+      // Restore reader mode flag (layout will be fixed after print)
+      if (wasInReader) {
+        readerMode = true;
+      }
+    }
+    
+    window.addEventListener('beforeprint', () => {
+      if (!pdfDoc) return;
+      
+      // Show all pages immediately (even if not rendered)
+      pagesEl.querySelectorAll('.page').forEach(w => {
+        w.style.display = 'block';
+      });
+      
+      // Try to render if not already prepared
+      if (!printPrepared) {
+        prepareForPrint();
+      }
+    });
+    
+    window.addEventListener('afterprint', () => {
+      printPrepared = false;
+      // After printing, reapply reader layout if needed
+      if (readerMode) {
+        applyReaderLayout();
+      } else {
+        // Re-apply windowing
+        renderWindowAroundCurrent();
+      }
+    });
 
     window.addEventListener('resize', () => {
       dpr = window.devicePixelRatio || 1;

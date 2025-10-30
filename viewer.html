@@ -923,21 +923,32 @@
     }
   }
 
-  @media print {
+@media print {
     body > .app > .header,
     body > .reader-hint,
     body > #commentSidebar,
     body > #helpModal,
     body > #identityModal,
-    body > #textStylePanel {
+    body > #textStylePanel,
+    body > .hamburger-menu,
+    body > .menu-overlay,
+    body > #zoomMenu,
+    body > #loadErrorBanner {
       display: none !important;
     }
-    .comment-pin { display: none !important; }
+    
+    .comment-pin { 
+      display: none !important; 
+    }
 
     body {
-      background: none !important;
+      background: white !important;
       color: #000 !important;
       overflow: visible !important;
+    }
+
+    .app {
+      display: block !important;
     }
 
     .main {
@@ -950,43 +961,55 @@
     #pages {
       display: block !important;
       gap: 0 !important;
+      width: 100% !important;
     }
 
     .page {
       box-shadow: none !important;
-      margin: 0 auto !important;
-      page-break-after: always;
+      margin: 0 auto 0 auto !important;
+      page-break-after: always !important;
+      page-break-inside: avoid !important;
       width: 100% !important;
       height: auto !important;
       contain-intrinsic-size: auto !important;
+      display: block !important;
+      position: relative !important;
     }
 
     .page canvas {
-      width: 100% !important; /* Force style width to 100% */
+      width: 100% !important;
       height: auto !important;
       max-width: 100% !important;
+      display: block !important;
     }
 
     .page:last-child {
-      page-break-after: avoid;
+      page-break-after: avoid !important;
     }
 
     .textLayer {
-      visibility: visible !important;
+      display: none !important;
     }
 
-    .layer, .textLayer {
-      /* Reset transforms and dimensions set by JS */
-      transform: none !important;
-      scale: 1 !important;
-      width: 100% !important;
-      height: 100% !important;
+    .layer {
+      display: block !important;
+      position: absolute !important;
       top: 0 !important;
       left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      transform: none !important;
+      transform-origin: 0 0 !important;
     }
 
-    .text-anno, .sig-anno, .comment-pin {
+    .text-anno, .sig-anno {
       outline: none !important;
+      page-break-inside: avoid !important;
+      position: absolute !important;
+    }
+    
+    .sig-anno .resize-handle {
+      display: none !important;
     }
   }
 
@@ -1129,7 +1152,7 @@
     </div>
   </div>
 
-  <div class="reader-hint">Full screen reading. ←/→ prev/next page · ↑/↓ scroll · 'r' to exit</div>
+  <div class="reader-hint">Reader mode · ↑/↓ scroll · 'r' to exit</div>
 
   <aside id="commentSidebar">
     <div class="cs-thread" id="csThread"></div>

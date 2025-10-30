@@ -1,2 +1,3 @@
 - Download not working
 - Comment input keeping old comments
+- Print mode not working
