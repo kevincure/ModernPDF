@@ -21,7 +21,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let currentScale = 1;
     const DEFAULT_WIDTH_FRACTION = 0.8;
     let defaultWidthScale = 1;
-    const ZOOMS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    const ZOOM_STEPS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    const MIN_SCALE = ZOOM_STEPS[0];
+    const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
     let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
     let dpr = window.devicePixelRatio || 1;
 
@@ -35,6 +37,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let scrollTimer = null;
     let searchResults = [];
     let currentMatchIndex = -1;
+    let lastSearchQuery = '';
+    let searchDirty = false;
     const deletedPdfThreads = [];
 
     const el = (id) => document.getElementById(id);
@@ -286,10 +290,20 @@ mainEl.addEventListener('scroll', ()=>{
 }, { passive: true });
 
 
-    function snapIndexFromScale(s) {
+    function getBaseScale() {
+      const base = defaultWidthScale || 1;
+      return base > 0 ? base : 1;
+    }
+
+    function getRelativeScale(scale = currentScale) {
+      const base = getBaseScale();
+      return clamp(scale / base, ZOOM_STEPS[0], ZOOM_STEPS[ZOOM_STEPS.length - 1]);
+    }
+
+    function snapIndexFromRelative(ratio) {
       let best = 0, d = 1e9;
-      for (let i = 0; i < ZOOMS.length; i++) {
-        const di = Math.abs(ZOOMS[i] - s);
+      for (let i = 0; i < ZOOM_STEPS.length; i++) {
+        const di = Math.abs(ZOOM_STEPS[i] - ratio);
         if (di < d) {
           d = di;
           best = i;
@@ -314,7 +328,7 @@ mainEl.addEventListener('scroll', ()=>{
       const vp = p.getViewport({ scale: 1 });
       const { width: w, height: h } = getMainContentSize();
       if (w <= 0 || h <= 0) return currentScale;
-      return clamp(Math.min(w / vp.width, h / vp.height), ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+      return clamp(Math.min(w / vp.width, h / vp.height), MIN_SCALE, MAX_SCALE);
     }
 
     function setTool(name) {
@@ -691,6 +705,11 @@ function goToPageNumber(n){
       currentMatchIndex = -1;
       searchStatus.textContent = '0 / 0';
       searchInput.value = '';
+      lastSearchQuery = '';
+      searchDirty = false;
+      if (searchContainer) {
+        searchContainer.classList.remove('has-query');
+      }
     }
 
     function updateActiveHighlight() {
@@ -720,6 +739,7 @@ function goToPageNumber(n){
     async function performSearch() {
       if (!pdfDoc) return;
       const query = (searchInput.value || '').trim().toLowerCase();
+      lastSearchQuery = query;
 
       searchResults.forEach(res => res.element?.remove());
       searchResults = [];
@@ -727,6 +747,7 @@ function goToPageNumber(n){
 
       if (!query) {
         updateActiveHighlight();
+        searchDirty = false;
         return;
       }
 
@@ -764,12 +785,14 @@ function goToPageNumber(n){
         }
       }
       updateActiveHighlight();
+      searchDirty = false;
     }
 
     async function loadPdfBytesArray(buf) {
       const data = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-      pdfBytes = data; // No need to copy on load
-      originalPdfBytes = null; // Only copy when we need to save
+      const stable = data.slice ? data.slice() : new Uint8Array(data);
+      pdfBytes = stable;
+      originalPdfBytes = stable.slice();
 
       const loading = pdfjsLib.getDocument({ data: pdfBytes });
       pdfDoc = await loading.promise;
@@ -872,23 +895,27 @@ function goToPageNumber(n){
       }
 
       try {
-        let sourceBytes = pdfBytes;
-        if (!sourceBytes || sourceBytes.length === 0) {
-      // Try to reload from original source
-      const u = new URL(location.href);
-      const src = u.searchParams.get('src');
-      
-      if (src && isExtension) {
-        const response = await sendRuntimeMessage({ action: 'fetchPdf', url: src });
-        if (response?.success && response.data) {
-          sourceBytes = new Uint8Array(response.data);
+        let sourceBytes = (pdfBytes && pdfBytes.length) ? pdfBytes : null;
+        if ((!sourceBytes || sourceBytes.length === 0) && originalPdfBytes?.length) {
+          sourceBytes = originalPdfBytes;
         }
-      }
-    }
-    
-    if (!sourceBytes || sourceBytes.length === 0) {
-      throw new Error('No PDF data available to save');
-    }
+
+        if (!sourceBytes || sourceBytes.length === 0) {
+          // Try to reload from original source
+          const u = new URL(location.href);
+          const src = u.searchParams.get('src');
+
+          if (src && isExtension) {
+            const response = await sendRuntimeMessage({ action: 'fetchPdf', url: src });
+            if (response?.success && response.data) {
+              sourceBytes = new Uint8Array(response.data);
+            }
+          }
+        }
+
+        if (!sourceBytes || sourceBytes.length === 0) {
+          throw new Error('No PDF data available to save');
+        }
         const doc = await PDFLib.PDFDocument.load(sourceBytes);
         doc.setModificationDate?.(new Date());
 
@@ -1105,6 +1132,7 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         const stable = bytes.slice();
 
         pdfBytes = stable;
+        originalPdfBytes = stable.slice();
 
         const blob = new Blob([stable], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
@@ -1184,12 +1212,19 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       });
     }
 
-    searchInput.addEventListener('keydown', (e) => {
+    searchInput.addEventListener('keydown', async (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        performSearch();
+        const query = (searchInput.value || '').trim().toLowerCase();
+        if (!searchDirty && query && query === lastSearchQuery && searchResults.length) {
+          currentMatchIndex = (currentMatchIndex + 1) % searchResults.length;
+          updateActiveHighlight();
+        } else {
+          await performSearch();
+        }
+      } else if (e.key === 'Escape') {
+        clearSearch();
       }
-      if (e.key === 'Escape') clearSearch();
     });
 
     searchNextBtn.onclick = () => {
@@ -1623,21 +1658,27 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       const { width: containerWidth } = getMainContentSize();
       const target = containerWidth * fraction;
       if (target <= 0 || vp.width <= 0) return null;
-      return clamp(target / vp.width, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+      return clamp(target / vp.width, MIN_SCALE, MAX_SCALE);
     }
 
     function setScale(s) {
-      currentScale = s;
+      currentScale = clamp(s, MIN_SCALE, MAX_SCALE);
       renderAll();
     }
 
     zoomInBtn.onclick = () => {
-      const i = snapIndexFromScale(currentScale);
-      setScale(ZOOMS[clamp(i + 1, 0, ZOOMS.length - 1)]);
+      const base = getBaseScale();
+      const ratio = getRelativeScale();
+      const i = snapIndexFromRelative(ratio);
+      const next = ZOOM_STEPS[clamp(i + 1, 0, ZOOM_STEPS.length - 1)];
+      setScale(base * next);
     };
     zoomOutBtn.onclick = () => {
-      const i = snapIndexFromScale(currentScale);
-      setScale(ZOOMS[clamp(i - 1, 0, ZOOMS.length - 1)]);
+      const base = getBaseScale();
+      const ratio = getRelativeScale();
+      const i = snapIndexFromRelative(ratio);
+      const next = ZOOM_STEPS[clamp(i - 1, 0, ZOOM_STEPS.length - 1)];
+      setScale(base * next);
     };
 
 async function fitToAvailableWidth(fraction = 1) {
@@ -1918,12 +1959,15 @@ document.querySelectorAll('.menu-item').forEach(item => {
 
 /* ===== Find UI: show up/down + count only when there is input ===== */
 const searchContainer = document.querySelector('.search-container');
-function updateSearchUIState() {
+function updateSearchUIState(markDirty = false) {
   const has = (searchInput.value || '').trim().length > 0;
   searchContainer.classList.toggle('has-query', has);
+  if (markDirty) {
+    searchDirty = true;
+  }
 }
-searchInput.addEventListener('input', updateSearchUIState);
-updateSearchUIState();
+searchInput.addEventListener('input', () => updateSearchUIState(true));
+updateSearchUIState(false);
 
 /* ===== Page / Zoom compact boxes ===== */
 const pageBox = document.getElementById('pageBox');
@@ -2291,20 +2335,34 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
 
 // Force render all pages before printing
     let printPrepared = false;
+    let printPrevScale = null;
+    let printPrevScroll = null;
+    let printPrevReaderMode = false;
     
     async function prepareForPrint() {
       if (!pdfDoc || printPrepared) return;
       printPrepared = true;
-      
+
       // Cancel all ongoing render tasks
       cancelAllPageRenders();
-      
+
       // Disable reader mode temporarily
       const wasInReader = readerMode;
       if (readerMode) {
         readerMode = false;
       }
-      
+
+      if (printPrevScale === null) {
+        printPrevScale = currentScale;
+        printPrevReaderMode = wasInReader;
+        printPrevScroll = mainEl ? { top: mainEl.scrollTop, left: mainEl.scrollLeft } : null;
+      }
+
+      if (Math.abs(currentScale - 1) > 0.001) {
+        currentScale = 1;
+        updatePageInfo();
+      }
+
       // Ensure all page slots exist and show them
       for (let i = 1; i <= pdfDoc.numPages; i++) {
         const slot = ensurePageSlot(i);
@@ -2318,7 +2376,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
         promises.push(renderPage(i).catch(e => console.warn('Print render failed for page', i, e)));
       }
       await Promise.all(promises);
-      
+
       // Restore reader mode flag (layout will be fixed after print)
       if (wasInReader) {
         readerMode = true;
@@ -2340,14 +2398,37 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
     });
     
     window.addEventListener('afterprint', () => {
+      const restoreScale = printPrevScale;
+      const restoreScroll = printPrevScroll;
+      const restoreReader = printPrevReaderMode;
+
       printPrepared = false;
-      // After printing, reapply reader layout if needed
-      if (readerMode) {
-        applyReaderLayout();
-      } else {
-        // Re-apply windowing
-        renderWindowAroundCurrent();
+      printPrevScale = null;
+      printPrevScroll = null;
+      printPrevReaderMode = false;
+
+      if (restoreScale !== null && Math.abs(currentScale - restoreScale) > 0.001) {
+        currentScale = restoreScale;
+        updatePageInfo();
       }
+
+      if (restoreReader) {
+        readerMode = true;
+      }
+
+      Promise.resolve().then(async () => {
+        if (readerMode) {
+          await renderWindowAroundCurrent();
+          applyReaderLayout();
+        } else {
+          await renderWindowAroundCurrent();
+        }
+        if (restoreScroll && mainEl && !readerMode) {
+          mainEl.scrollTop = restoreScroll.top;
+          mainEl.scrollLeft = restoreScroll.left;
+        }
+        updateToolbarStates();
+      });
     });
 
     window.addEventListener('resize', () => {
