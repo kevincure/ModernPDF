@@ -24,6 +24,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     const ZOOM_STEPS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
     const MIN_SCALE = ZOOM_STEPS[0];
     const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    const PRINT_RESOLUTION = 150;
+    const PRINT_UNITS = PRINT_RESOLUTION / 72;
     let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
     let dpr = window.devicePixelRatio || 1;
 
@@ -42,7 +44,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     const deletedPdfThreads = [];
 
     const el = (id) => document.getElementById(id);
-    const pagesEl = el('pages'), mainEl = el('main');
+    const pagesEl = el('pages'), mainEl = el('main'), printContainer = el('printContainer');
     let loadErrorBanner = document.getElementById('loadErrorBanner');
     let loadErrorMessage = document.getElementById('loadErrorMessage');
     let loadErrorCopy = document.getElementById('loadErrorCopy');
@@ -672,6 +674,7 @@ function goToPageNumber(n){
                   x,
                   y,
                   thread,
+                  type: 'comment',
                   origin: 'pdf',
                   _importedCount: thread.length
                 });
@@ -796,6 +799,10 @@ function goToPageNumber(n){
 
       const loading = pdfjsLib.getDocument({ data: pdfBytes });
       pdfDoc = await loading.promise;
+
+      printPrepared = false;
+      printInFlight = null;
+      if (printContainer) printContainer.innerHTML = '';
 
       annotations = {};
       nextAnnoId = 1;
@@ -1709,6 +1716,66 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       if (wrap) wrap.style.display = 'block';
     }
 
+    async function requestReaderFullscreen() {
+      if (!document.fullscreenEnabled) return false;
+      let lastError = null;
+      const targets = [document.documentElement, document.body];
+      for (const target of targets) {
+        if (!target || typeof target.requestFullscreen !== 'function') continue;
+        try {
+          const result = target.requestFullscreen();
+          if (result && typeof result.then === 'function') {
+            await result;
+          }
+          return true;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      if (window.self !== window.top) {
+        try {
+          const parentDoc = window.parent?.document;
+          const parentEl = parentDoc?.documentElement;
+          if (parentEl && typeof parentEl.requestFullscreen === 'function') {
+            const result = parentEl.requestFullscreen();
+            if (result && typeof result.then === 'function') {
+              await result;
+            }
+            return true;
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      if (lastError) {
+        console.warn('Fullscreen request failed:', lastError);
+      }
+      return false;
+    }
+
+    async function exitReaderFullscreen() {
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+          return true;
+        } catch (err) {
+          console.warn('Exit fullscreen failed:', err);
+        }
+      }
+
+      if (window.parent?.document?.fullscreenElement) {
+        try {
+          await window.parent.document.exitFullscreen();
+          return true;
+        } catch (err) {
+          console.warn('Exit fullscreen failed (parent):', err);
+        }
+      }
+      return false;
+    }
+
     async function toggleReader() {
       if (!pdfDoc) return;
 
@@ -1717,49 +1784,28 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       if (entering) {
         readerPrevScale = currentScale;
         readerMode = true;
-        currentScale = await computeReaderFitScale();
+        const fullscreenPromise = requestReaderFullscreen();
+        const nextScale = await computeReaderFitScale();
+        currentScale = nextScale;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-        
-        // Request fullscreen - try both iframe and top-level document
-        if (document.fullscreenEnabled) {
-          try {
-            // First try to fullscreen the entire document (works when in iframe with allow="fullscreen")
-            await document.documentElement.requestFullscreen();
-          } catch (err) {
-            // If that fails, try parent window (if we're in an iframe)
-            if (window.self !== window.top && window.parent?.document?.documentElement?.requestFullscreen) {
-              try {
-                await window.parent.document.documentElement.requestFullscreen();
-              } catch (e) {
-                console.warn('Fullscreen not available:', e);
-              }
-            } else {
-              console.warn('Fullscreen request denied:', err);
-            }
-          }
+        try {
+          await fullscreenPromise;
+        } catch (err) {
+          console.warn('Fullscreen request failed:', err);
         }
       } else {
         readerMode = false;
+        const exitPromise = exitReaderFullscreen();
         currentScale = readerPrevScale || currentScale;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-        
-        // Exit fullscreen
-        if (document.fullscreenElement) {
-          try {
-            await document.exitFullscreen();
-          } catch (err) {
-            console.warn('Exit fullscreen failed:', err);
-          }
-        } else if (window.parent?.document?.fullscreenElement) {
-          try {
-            await window.parent.document.exitFullscreen();
-          } catch (err) {
-            console.warn('Exit parent fullscreen failed:', err);
-          }
+        try {
+          await exitPromise;
+        } catch (err) {
+          console.warn('Exit fullscreen failed:', err);
         }
       }
       updateToolbarStates();
@@ -2333,102 +2379,107 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       }
     })();
 
-// Force render all pages before printing
+// Prepare a print-only rendering of the document
     let printPrepared = false;
-    let printPrevScale = null;
-    let printPrevScroll = null;
-    let printPrevReaderMode = false;
-    
-    async function prepareForPrint() {
-      if (!pdfDoc || printPrepared) return;
-      printPrepared = true;
+    let printInFlight = null;
 
-      // Cancel all ongoing render tasks
-      cancelAllPageRenders();
-
-      // Disable reader mode temporarily
-      const wasInReader = readerMode;
-      if (readerMode) {
-        readerMode = false;
-      }
-
-      if (printPrevScale === null) {
-        printPrevScale = currentScale;
-        printPrevReaderMode = wasInReader;
-        printPrevScroll = mainEl ? { top: mainEl.scrollTop, left: mainEl.scrollLeft } : null;
-      }
-
-      if (Math.abs(currentScale - 1) > 0.001) {
-        currentScale = 1;
-        updatePageInfo();
-      }
-
-      // Ensure all page slots exist and show them
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const slot = ensurePageSlot(i);
-        const wrap = slot.canvas.parentElement;
-        if (wrap) wrap.style.display = 'block';
-      }
-      
-      // Force render all pages
-      const promises = [];
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        promises.push(renderPage(i).catch(e => console.warn('Print render failed for page', i, e)));
-      }
-      await Promise.all(promises);
-
-      // Restore reader mode flag (layout will be fixed after print)
-      if (wasInReader) {
-        readerMode = true;
+    function renderAnnotationsForPrint(layer, pageNum) {
+      const list = annotations[String(pageNum)] || [];
+      if (!list.length) return;
+      for (const anno of list) {
+        if (anno.type === 'comment') continue;
+        if (anno.type === 'text') {
+          const styles = anno.styles || {};
+          const div = document.createElement('div');
+          div.className = 'print-text';
+          div.style.left = `${anno.x}px`;
+          div.style.top = `${anno.y}px`;
+          const w = Math.max(60, anno.boxWpt || 200);
+          div.style.width = `${w}px`;
+          div.style.whiteSpace = 'pre-wrap';
+          div.style.fontFamily = styles.fontFamily || 'Helvetica';
+          div.style.fontWeight = styles.fontWeight || 'normal';
+          div.style.fontStyle = styles.fontStyle || 'normal';
+          const fs = parseInt(styles.fontSize, 10) || 12;
+          div.style.fontSize = `${fs}px`;
+          div.style.color = styles.color || '#000';
+          div.textContent = anno.content || '';
+          layer.appendChild(div);
+        } else if (anno.type === 'signature') {
+          const box = document.createElement('div');
+          box.className = 'print-signature';
+          box.style.left = `${anno.x}px`;
+          box.style.top = `${anno.y}px`;
+          const w = parseFloat(anno.w) || 200;
+          const h = parseFloat(anno.h) || 80;
+          box.style.width = `${w}px`;
+          box.style.height = `${h}px`;
+          const img = document.createElement('img');
+          img.src = anno.dataUrl;
+          img.alt = 'Signature';
+          img.draggable = false;
+          box.appendChild(img);
+          layer.appendChild(box);
+        }
       }
     }
-    
+
+    async function renderPrintPage(pageNum) {
+      const page = await pdfDoc.getPage(pageNum);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const printViewport = page.getViewport({ scale: PRINT_UNITS });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      canvas.width = Math.floor(printViewport.width);
+      canvas.height = Math.floor(printViewport.height);
+      canvas.style.width = `${baseViewport.width}px`;
+      canvas.style.height = `${baseViewport.height}px`;
+      const renderTask = page.render({ canvasContext: ctx, viewport: printViewport });
+      await renderTask.promise;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'print-page';
+      wrapper.dataset.page = String(pageNum);
+      wrapper.style.width = `${baseViewport.width}px`;
+      wrapper.style.height = `${baseViewport.height}px`;
+      wrapper.appendChild(canvas);
+      const layer = document.createElement('div');
+      layer.className = 'print-layer';
+      layer.style.width = `${baseViewport.width}px`;
+      layer.style.height = `${baseViewport.height}px`;
+      renderAnnotationsForPrint(layer, pageNum);
+      wrapper.appendChild(layer);
+      printContainer?.appendChild(wrapper);
+    }
+
+    async function prepareForPrint() {
+      if (!pdfDoc || !printContainer) return;
+      if (printPrepared) return;
+      if (printInFlight) {
+        await printInFlight;
+        return;
+      }
+      printInFlight = (async () => {
+        printContainer.innerHTML = '';
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          await renderPrintPage(i);
+        }
+        printPrepared = true;
+      })();
+      try {
+        await printInFlight;
+      } finally {
+        printInFlight = null;
+      }
+    }
+
     window.addEventListener('beforeprint', () => {
       if (!pdfDoc) return;
-      
-      // Show all pages immediately (even if not rendered)
-      pagesEl.querySelectorAll('.page').forEach(w => {
-        w.style.display = 'block';
-      });
-      
-      // Try to render if not already prepared
-      if (!printPrepared) {
-        prepareForPrint();
-      }
+      prepareForPrint().catch(err => console.error('Print preparation failed:', err));
     });
-    
+
     window.addEventListener('afterprint', () => {
-      const restoreScale = printPrevScale;
-      const restoreScroll = printPrevScroll;
-      const restoreReader = printPrevReaderMode;
-
       printPrepared = false;
-      printPrevScale = null;
-      printPrevScroll = null;
-      printPrevReaderMode = false;
-
-      if (restoreScale !== null && Math.abs(currentScale - restoreScale) > 0.001) {
-        currentScale = restoreScale;
-        updatePageInfo();
-      }
-
-      if (restoreReader) {
-        readerMode = true;
-      }
-
-      Promise.resolve().then(async () => {
-        if (readerMode) {
-          await renderWindowAroundCurrent();
-          applyReaderLayout();
-        } else {
-          await renderWindowAroundCurrent();
-        }
-        if (restoreScroll && mainEl && !readerMode) {
-          mainEl.scrollTop = restoreScroll.top;
-          mainEl.scrollLeft = restoreScroll.left;
-        }
-        updateToolbarStates();
-      });
+      if (printContainer) printContainer.innerHTML = '';
     });
 
     window.addEventListener('resize', () => {

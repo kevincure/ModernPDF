@@ -936,9 +936,9 @@
     body > #loadErrorBanner {
       display: none !important;
     }
-    
-    .comment-pin { 
-      display: none !important; 
+
+    .comment-pin {
+      display: none !important;
     }
 
     body {
@@ -948,81 +948,54 @@
     }
 
     .app {
-      display: block !important;
+      display: none !important;
     }
 
-    .main {
-      padding: 0 !important;
-      overflow: visible !important;
-      width: 100% !important;
-      height: auto !important;
-    }
-
-    #pages {
+    #printContainer {
       display: block !important;
-      gap: 0 !important;
       width: 100% !important;
     }
 
-    .page {
-      box-shadow: none !important;
-      margin: 0 auto 0 auto !important;
+    #printContainer .print-page {
+      position: relative !important;
+      margin: 0 auto !important;
       page-break-after: always !important;
       page-break-inside: avoid !important;
-      width: 100% !important;
+      width: auto !important;
       height: auto !important;
-      contain-intrinsic-size: auto !important;
-      display: block !important;
-      position: relative !important;
+      background: #fff !important;
     }
 
-    .page canvas {
-      width: 100% !important;
-      height: auto !important;
-      max-width: 100% !important;
-      display: block !important;
-    }
-
-    .page:last-child {
+    #printContainer .print-page:last-child {
       page-break-after: avoid !important;
     }
 
-    .textLayer {
-      display: none !important;
+    #printContainer canvas {
+      display: block !important;
+      background: #fff !important;
+      width: 100% !important;
+      height: auto !important;
     }
 
-    .layer {
-      display: block !important;
+    #printContainer .print-layer {
       position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
+      inset: 0 !important;
+      pointer-events: none !important;
+    }
+
+    #printContainer .print-text,
+    #printContainer .print-signature {
+      position: absolute !important;
+      page-break-inside: avoid !important;
+    }
+
+    #printContainer .print-signature img {
+      display: block !important;
       width: 100% !important;
       height: 100% !important;
-      transform: none !important;
-      transform-origin: 0 0 !important;
-    }
-
-    .text-anno, .sig-anno {
-      outline: none !important;
-      page-break-inside: avoid !important;
-      position: absolute !important;
-    }
-    
-    .sig-anno .resize-handle {
-      display: none !important;
+      object-fit: contain !important;
     }
   }
-
-/* Better SVG icon handling */
-.icon-svg {
-  width: 1.2em;
-  height: 1.2em;
-  fill: currentColor;
-  display: inline-block;
-  vertical-align: middle;
-  pointer-events: none;
-  flex-shrink: 0;
-}
 
 .nav-btn .icon-svg,
 .icon-btn .icon-svg {
@@ -1039,6 +1012,10 @@
   width: 14px;
   height: 14px;
   filter: brightness(0) invert(1); /* Make white */
+}
+
+#printContainer {
+  display: none;
 }
 
 .menu-item .icon-svg {
@@ -1242,5 +1219,7 @@
   <script src="lib/pdf.min.js"></script>
   <script src="lib/pdf-lib.min.js"></script>
   <script src="viewer.js"></script>
+  <div id="printContainer"></div>
+
 </body>
 </html>
