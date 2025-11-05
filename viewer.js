@@ -19,6 +19,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let annotations = {};
     let currentTool = 'select';
     let currentScale = 1;
+    const DEFAULT_WIDTH_FRACTION = 0.8;
+    let defaultWidthScale = 1;
     const ZOOMS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
     let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
     let dpr = window.devicePixelRatio || 1;
@@ -777,22 +779,42 @@ function goToPageNumber(n){
 
       await importPdfComments();
 
-      currentScale = 1;
       readerMode = false;
-      readerPrevScale = 1;
       currentPageIndex = 0;
+
+      const baseScale = await computeWidthScale(DEFAULT_WIDTH_FRACTION);
+      if (Number.isFinite(baseScale)) {
+        defaultWidthScale = baseScale;
+        currentScale = baseScale;
+        readerPrevScale = baseScale;
+      } else {
+        currentScale = 1;
+        defaultWidthScale = currentScale;
+        readerPrevScale = 1;
+      }
 
       // Use windowing - only render visible pages initially
       await renderWindowAroundCurrent();
+      updatePageInfo();
       setTool('select');
       hideTextToolbar();
       clearSearch();
       closeCommentUI();
       updateToolbarStates();
+
+      if (mainEl) {
+        requestAnimationFrame(() => {
+          if (document.activeElement !== mainEl) {
+            mainEl.focus({ preventScroll: true });
+          }
+        });
+      }
     }
 
-    openBtn.onclick = () => fileInput.click();
-    fileInput.onchange = async (e) => {
+    if (openBtn && fileInput) {
+      openBtn.onclick = () => fileInput.click();
+    }
+    if (fileInput) fileInput.onchange = async (e) => {
       const f = e.target.files[0];
       if (!f) return;
       const b = await f.arrayBuffer();
@@ -1594,6 +1616,16 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       closeCommentUI();
     }, true);
 
+    async function computeWidthScale(fraction = 1) {
+      if (!pdfDoc) return currentScale;
+      const page = await pdfDoc.getPage(1);
+      const vp = page.getViewport({ scale: 1 });
+      const { width: containerWidth } = getMainContentSize();
+      const target = containerWidth * fraction;
+      if (target <= 0 || vp.width <= 0) return null;
+      return clamp(target / vp.width, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+    }
+
     function setScale(s) {
       currentScale = s;
       renderAll();
@@ -1608,18 +1640,13 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       setScale(ZOOMS[clamp(i - 1, 0, ZOOMS.length - 1)]);
     };
 
-function fitToAvailableWidth() {
+async function fitToAvailableWidth(fraction = 1) {
   if (!pdfDoc) return;
-  pdfDoc.getPage(1).then(p => {
-    const vp = p.getViewport({ scale: 1 });
-    // Use the real inner width of the scrolling area, not window width.
-    const { width: target } = getMainContentSize(); // already defined in your code
-    if (target <= 0) return;
-    const s = clamp(target / vp.width, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
-    setScale(s);
-  });
+  const scale = await computeWidthScale(fraction);
+  if (!Number.isFinite(scale)) return;
+  setScale(scale);
 }
-fitWidthBtn.onclick = fitToAvailableWidth;
+fitWidthBtn.onclick = () => fitToAvailableWidth();
 
     function applyReaderLayout() {
       document.body.classList.toggle('reader', readerMode);
@@ -1734,6 +1761,15 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       const tag = e.target.tagName;
       const editing = e.target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+
       if (e.key === 'Delete' && !editing && selectedAnnoEl) {
         const anno = selectedAnnoEl._anno;
         if (anno) {
@@ -1763,7 +1799,7 @@ fitWidthBtn.onclick = fitToAvailableWidth;
     e.preventDefault();
     signatureTool.click();
   }
-  if (!editing && (e.key === 'c' || e.key === 'C')) {
+  if (!editing && commentTool && (e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
     commentTool.click();
   }
@@ -1781,7 +1817,8 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !editing) {
         e.preventDefault();
         const d = e.key === 'ArrowUp' ? -120 : 120;
-        mainEl.scrollBy({ top: d, behavior: 'smooth' });
+        const behavior = e.repeat ? 'auto' : 'smooth';
+        mainEl.scrollBy({ top: d, behavior });
         return;
       }
 
@@ -1802,9 +1839,6 @@ fitWidthBtn.onclick = fitToAvailableWidth;
           goToPage(1);
         }
       } else {
-        if (!editing && (e.key === 't' || e.key === 'T') && textTool) textTool.click();
-        if (!editing && (e.key === 'm' || e.key === 'M') && commentTool) commentTool.click();
-        if (!editing && (e.key === 's' || e.key === 'S') && signatureTool) signatureTool.click();
         if (!editing && e.key === 'ArrowLeft') {
           e.preventDefault();
           goToPage(-1);
@@ -1912,7 +1946,11 @@ const zoomMenu = document.getElementById('zoomMenu');
         if (pageTotal) pageTotal.textContent = `/ ${pc}`;
       }
       
-      zoomBox && (zoomBox.textContent = `${Math.round(currentScale * 100)}%`);
+      if (zoomBox) {
+        const baseline = defaultWidthScale || 1;
+        const percent = Math.round((currentScale / baseline) * 100);
+        zoomBox.textContent = `${percent}%`;
+      }
     }
     function updatePageInfo() { syncInfoBoxes(); }
     syncInfoBoxes();
@@ -2039,8 +2077,8 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
     <button class="menu-item" id="textTool" title="Annotate text (A)">
       Annotate (a)
     </button>
-    <button class="menu-item" id="commentTool" title="Add comment (C)">
-      Add Comment (c)
+    <button class="menu-item" id="commentTool" title="Add comment (M)">
+      Add Comment (m)
     </button>
     <button class="menu-item" id="signatureTool" title="Add signature (S)">
       Add Signature (s)
@@ -2316,13 +2354,26 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       dpr = window.devicePixelRatio || 1;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(async () => {
-        if (readerMode && pdfDoc) {
+        if (!pdfDoc) return;
+
+        const prevBase = defaultWidthScale;
+        const newBase = await computeWidthScale(DEFAULT_WIDTH_FRACTION);
+        if (Number.isFinite(newBase)) {
+          const atDefault = !readerMode && Math.abs(currentScale - prevBase) < 0.01;
+          defaultWidthScale = newBase;
+          if (atDefault) {
+            currentScale = newBase;
+          }
+        }
+
+        if (readerMode) {
           currentScale = await computeReaderFitScale();
           await renderAll();
           updatePageInfo();
           updateToolbarStates();
-        } else if (pdfDoc) {
+        } else {
           await renderAll();
+          updatePageInfo();
         }
       }, 120);
     });

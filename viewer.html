@@ -1057,9 +1057,6 @@
   <div class="app">
 <div class="header" id="leftBar">
   <button class="hamburger-btn" id="hamburgerBtn">☰</button>
-  <button class="nav-btn icon-btn" id="openBtn" title="Open PDF (O)">
-    <img src="icons/folder-open.svg" class="icon-svg">
-  </button>
   <input id="file" type="file" accept="application/pdf"/>
   <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled>
     <img src="icons/download.svg" class="icon-svg">
@@ -1111,8 +1108,8 @@
     <button class="menu-item" id="signatureTool" title="Add signature (S)">
       <img src="icons/pen-fancy.svg" class="icon-svg"> Add Signature
     </button>
-    <button class="menu-item" id="commentTool" title="Add comment (C)">
-      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment
+    <button class="menu-item" id="commentTool" title="Add comment (M)">
+      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment (M)
     </button>
     
     <hr class="menu-divider">
@@ -1147,7 +1144,7 @@
   </div>
 </div>
 <div class="menu-overlay" id="menuOverlay"></div>
-    <div class="main" id="main">
+    <div class="main" id="main" tabindex="-1">
       <div id="pages"></div>
     </div>
   </div>
@@ -1191,7 +1188,7 @@
     <li><strong>T:</strong> Text selection mode</li>
     <li><strong>A:</strong> Add text annotation</li>
     <li><strong>S:</strong> Add signature</li>
-    <li><strong>C:</strong> Add comment</li>
+    <li><strong>M:</strong> Add comment</li>
   </ul>
 </div>
     </div>
