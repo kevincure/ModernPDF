@@ -481,7 +481,9 @@ mainEl.addEventListener('scroll', ()=>{
         baseW: 0,
         baseH: 0,
         renderTask: null,
-        pdfRenderTask: null
+        pdfRenderTask: null,
+        pdfAnnotationLayer: null,
+        pdfRenderToken: 0
       };
       pages[num - 1] = slot;
 
@@ -497,9 +499,14 @@ mainEl.addEventListener('scroll', ()=>{
           } catch (_) {}
           s.renderTask = null;
         }
-        if (s && s.pdfRenderTask && typeof s.pdfRenderTask.cancel === 'function') {
-          try { s.pdfRenderTask.cancel(); } catch (_) {}
+        if (s) {
+          s.pdfRenderToken++;
+          if (s.pdfRenderTask && typeof s.pdfRenderTask.cancel === 'function') {
+            try { s.pdfRenderTask.cancel(); } catch (_) {}
+          }
           s.pdfRenderTask = null;
+          s.pdfAnnotationLayer = null;
+          if (s.pdfLayer) s.pdfLayer.innerHTML = '';
         }
       });
     }
@@ -599,29 +606,62 @@ function goToPageNumber(n){
 
     async function renderPdfAnnotations(slot, page, viewport) {
       if (!slot.pdfLayer) return;
+      slot.pdfRenderToken++;
+      const renderToken = slot.pdfRenderToken;
       if (slot.pdfRenderTask && typeof slot.pdfRenderTask.cancel === 'function') {
         try { slot.pdfRenderTask.cancel(); } catch (_) {}
       }
-      slot.pdfLayer.innerHTML = '';
+      slot.pdfRenderTask = null;
+      slot.pdfAnnotationLayer = null;
+
+      if (slot.pdfLayer) {
+        const parent = slot.pdfLayer.parentElement;
+        if (parent) {
+          const replacement = slot.pdfLayer.cloneNode(false);
+          parent.replaceChild(replacement, slot.pdfLayer);
+          slot.pdfLayer = replacement;
+        } else {
+          slot.pdfLayer.innerHTML = '';
+        }
+      }
       const annotations = await page.getAnnotations({ intent: 'display' });
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
         return;
       }
-      const parameters = {
-        viewport: viewport.clone({ dontFlip: false }),
+      const AnnotationLayerClass = pdfjsLib?.AnnotationLayer;
+      if (typeof AnnotationLayerClass !== 'function') {
+        console.warn('Annotation layer class missing; skipping interactive annotations.');
+        return;
+      }
+      const viewportForAnnots = viewport.clone({ dontFlip: false });
+      const nullL10n = pdfjsLib?.NullL10n || {
+        get(str) { return Promise.resolve(str); },
+        translate() { return Promise.resolve(); }
+      };
+      const layer = new AnnotationLayerClass({
         div: slot.pdfLayer,
-        annotations,
+        accessibilityManager: null,
+        annotationCanvasMap: null,
+        l10n: nullL10n,
         page,
+        viewport: viewportForAnnots
+      });
+      const task = layer.render({
+        annotations,
+        intent: 'display',
+        viewport: viewportForAnnots,
         renderInteractiveForms: true,
         annotationStorage: pdfDoc?.annotationStorage,
         linkService: annotationLinkService,
         downloadManager: null
-      };
-      const task = pdfjsLib.AnnotationLayer.render(parameters);
+      });
       slot.pdfRenderTask = task;
       try {
-        await task?.promise;
+        await task;
+        if (slot.pdfRenderToken === renderToken) {
+          slot.pdfAnnotationLayer = layer;
+        }
       } catch (err) {
         if (!(err && err.name === 'RenderingCancelledException')) {
           console.warn('Annotation layer render failed', err);
@@ -920,6 +960,7 @@ function goToPageNumber(n){
 
       annotations = {};
       nextAnnoId = 1;
+      deletedPdfThreads.length = 0;
 
       await importPdfComments();
 
@@ -1320,17 +1361,19 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
               if (a.origin === 'pdf') {
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, a.x, rootY) || null;
                 if (!rootRef) {
-                  // Fallback: create a new root if we couldn't find the original
-                  const root0 = a.thread[0] || { text:'', author:userName || 'User' };
-                  rootRef = addTextAnnot(page, a.x, rootY, 24, 24,
-                                         String(root0.text||''), String(root0.author||''));
+                  console.warn('Skipping reply export for comment without original thread', {
+                    page: a.page,
+                    x: a.x,
+                    y: rootY
+                  });
+                  continue;
                 }
-                const start = Math.max((a._importedCount|0), 1); // replies user added
+                const start = Math.max((a._importedCount | 0), 1); // replies user added
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
                   addReplyAnnot(page, rootRef,
-                    a.x + 6*i, rootY - 6*i, 24, 24,
-                    String(r.text||''), String(r.author || userName || 'User'));
+                    a.x + 6 * i, rootY - 6 * i, 24, 24,
+                    String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
                 // Normal user-created thread: create root + all replies
@@ -2108,32 +2151,48 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
     }
 
     async function requestReaderFullscreen() {
-      if (!document.fullscreenEnabled) return false;
       let lastError = null;
+      const tryRequest = async (target) => {
+        if (!target) return false;
+        const methods = [
+          target.requestFullscreen,
+          target.webkitRequestFullscreen,
+          target.webkitRequestFullScreen,
+          target.mozRequestFullScreen,
+          target.msRequestFullscreen
+        ];
+        for (const fn of methods) {
+          if (typeof fn !== 'function') continue;
+          try {
+            const result = fn.call(target, { navigationUI: 'hide' });
+            if (result && typeof result.then === 'function') {
+              await result;
+            }
+            return true;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        return false;
+      };
+
       const targets = [document.documentElement, document.body];
       for (const target of targets) {
-        if (!target || typeof target.requestFullscreen !== 'function') continue;
-        try {
-          const result = target.requestFullscreen();
-          if (result && typeof result.then === 'function') {
-            await result;
-          }
+        if (await tryRequest(target)) {
           return true;
-        } catch (err) {
-          lastError = err;
         }
       }
 
       if (window.self !== window.top) {
         try {
           const parentDoc = window.parent?.document;
-          const parentEl = parentDoc?.documentElement;
-          if (parentEl && typeof parentEl.requestFullscreen === 'function') {
-            const result = parentEl.requestFullscreen();
-            if (result && typeof result.then === 'function') {
-              await result;
+          if (parentDoc) {
+            const parentTargets = [parentDoc.documentElement, parentDoc.body];
+            for (const target of parentTargets) {
+              if (await tryRequest(target)) {
+                return true;
+              }
             }
-            return true;
           }
         } catch (err) {
           lastError = err;
@@ -2147,23 +2206,40 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
     }
 
     async function exitReaderFullscreen() {
-      if (document.fullscreenElement) {
-        try {
-          await document.exitFullscreen();
-          return true;
-        } catch (err) {
-          console.warn('Exit fullscreen failed:', err);
+      const tryExit = async (doc) => {
+        if (!doc) return false;
+        if (doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement) {
+          const methods = [
+            doc.exitFullscreen,
+            doc.webkitExitFullscreen,
+            doc.webkitCancelFullScreen,
+            doc.mozCancelFullScreen,
+            doc.msExitFullscreen
+          ];
+          for (const fn of methods) {
+            if (typeof fn !== 'function') continue;
+            try {
+              const result = fn.call(doc);
+              if (result && typeof result.then === 'function') {
+                await result;
+              }
+              return true;
+            } catch (err) {
+              console.warn('Exit fullscreen failed:', err);
+            }
+          }
         }
+        return false;
+      };
+
+      if (await tryExit(document)) {
+        return true;
       }
 
-      if (window.parent?.document?.fullscreenElement) {
-        try {
-          await window.parent.document.exitFullscreen();
-          return true;
-        } catch (err) {
-          console.warn('Exit fullscreen failed (parent):', err);
-        }
+      if (await tryExit(window.parent?.document)) {
+        return true;
       }
+
       return false;
     }
 
