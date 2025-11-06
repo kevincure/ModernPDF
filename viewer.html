@@ -90,6 +90,12 @@
     width: auto;
   }
 
+  .header.tool-mode {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.92);
+  }
+
   .reader .header {
     opacity: 0;
     pointer-events: none;
@@ -178,6 +184,26 @@
     color: #666;
     font-weight: 500;
     box-shadow: 0 2px 4px rgba(0, 0, 0, .1);
+  }
+
+  .mode-indicator {
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 6px 12px;
+    align-self: center;
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .mode-indicator.is-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #1d4ed8;
   }
 
   /* Hamburger Menu */
@@ -321,8 +347,20 @@
   .layer {
     position: absolute;
     inset: 0;
-    pointer-events: auto;
+    pointer-events: none;
     transform-origin: 0 0;
+    z-index: 4;
+  }
+
+  .layer > * {
+    pointer-events: auto;
+  }
+
+  .pdf-annotation-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: auto;
   }
 
   .textLayer {
@@ -395,6 +433,44 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+  }
+
+  .highlight-anno {
+    background: rgba(255, 241, 118, 0.5);
+    border-radius: 4px;
+  }
+
+  .strike-anno::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 3px solid rgba(220, 38, 38, 0.85);
+    transform: translateY(-50%);
+  }
+
+  .markup-anno {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .markup-anno .highlight-anno,
+  .markup-anno .strike-anno {
+    position: absolute;
+    display: block;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .markup-anno.selected .highlight-anno,
+  .markup-anno.selected .strike-anno {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.6) inset;
+  }
+
+  .markup-anno.selected .strike-anno::after {
+    border-top-color: #1d4ed8;
   }
 
   .sig-anno .resize-handle {
@@ -936,9 +1012,9 @@
     body > #loadErrorBanner {
       display: none !important;
     }
-    
-    .comment-pin { 
-      display: none !important; 
+
+    .comment-pin {
+      display: none !important;
     }
 
     body {
@@ -948,81 +1024,54 @@
     }
 
     .app {
-      display: block !important;
+      display: none !important;
     }
 
-    .main {
-      padding: 0 !important;
-      overflow: visible !important;
-      width: 100% !important;
-      height: auto !important;
-    }
-
-    #pages {
+    #printContainer {
       display: block !important;
-      gap: 0 !important;
       width: 100% !important;
     }
 
-    .page {
-      box-shadow: none !important;
-      margin: 0 auto 0 auto !important;
+    #printContainer .print-page {
+      position: relative !important;
+      margin: 0 auto !important;
       page-break-after: always !important;
       page-break-inside: avoid !important;
-      width: 100% !important;
+      width: auto !important;
       height: auto !important;
-      contain-intrinsic-size: auto !important;
-      display: block !important;
-      position: relative !important;
+      background: #fff !important;
     }
 
-    .page canvas {
-      width: 100% !important;
-      height: auto !important;
-      max-width: 100% !important;
-      display: block !important;
-    }
-
-    .page:last-child {
+    #printContainer .print-page:last-child {
       page-break-after: avoid !important;
     }
 
-    .textLayer {
-      display: none !important;
+    #printContainer canvas {
+      display: block !important;
+      background: #fff !important;
+      width: 100% !important;
+      height: auto !important;
     }
 
-    .layer {
-      display: block !important;
+    #printContainer .print-layer {
       position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
+      inset: 0 !important;
+      pointer-events: none !important;
+    }
+
+    #printContainer .print-text,
+    #printContainer .print-signature {
+      position: absolute !important;
+      page-break-inside: avoid !important;
+    }
+
+    #printContainer .print-signature img {
+      display: block !important;
       width: 100% !important;
       height: 100% !important;
-      transform: none !important;
-      transform-origin: 0 0 !important;
-    }
-
-    .text-anno, .sig-anno {
-      outline: none !important;
-      page-break-inside: avoid !important;
-      position: absolute !important;
-    }
-    
-    .sig-anno .resize-handle {
-      display: none !important;
+      object-fit: contain !important;
     }
   }
-
-/* Better SVG icon handling */
-.icon-svg {
-  width: 1.2em;
-  height: 1.2em;
-  fill: currentColor;
-  display: inline-block;
-  vertical-align: middle;
-  pointer-events: none;
-  flex-shrink: 0;
-}
 
 .nav-btn .icon-svg,
 .icon-btn .icon-svg {
@@ -1041,6 +1090,10 @@
   filter: brightness(0) invert(1); /* Make white */
 }
 
+#printContainer {
+  display: none;
+}
+
 .menu-item .icon-svg {
   width: 1.1em;
   height: 1.1em;
@@ -1057,9 +1110,6 @@
   <div class="app">
 <div class="header" id="leftBar">
   <button class="hamburger-btn" id="hamburgerBtn">☰</button>
-  <button class="nav-btn icon-btn" id="openBtn" title="Open PDF (O)">
-    <img src="icons/folder-open.svg" class="icon-svg">
-  </button>
   <input id="file" type="file" accept="application/pdf"/>
   <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled>
     <img src="icons/download.svg" class="icon-svg">
@@ -1086,6 +1136,8 @@
     <button id="pageBox" class="info-box" title="Go to page">1 / 1</button>
     <button id="zoomBox" class="info-box" title="Zoom options">100%</button>
   </div>
+
+  <div id="modeIndicator" class="mode-indicator" aria-live="polite">Browse</div>
 </div>
 
 <div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
@@ -1111,8 +1163,8 @@
     <button class="menu-item" id="signatureTool" title="Add signature (S)">
       <img src="icons/pen-fancy.svg" class="icon-svg"> Add Signature
     </button>
-    <button class="menu-item" id="commentTool" title="Add comment (C)">
-      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment
+    <button class="menu-item" id="commentTool" title="Add comment (M)">
+      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment (M)
     </button>
     
     <hr class="menu-divider">
@@ -1147,7 +1199,7 @@
   </div>
 </div>
 <div class="menu-overlay" id="menuOverlay"></div>
-    <div class="main" id="main">
+    <div class="main" id="main" tabindex="-1">
       <div id="pages"></div>
     </div>
   </div>
@@ -1191,7 +1243,9 @@
     <li><strong>T:</strong> Text selection mode</li>
     <li><strong>A:</strong> Add text annotation</li>
     <li><strong>S:</strong> Add signature</li>
-    <li><strong>C:</strong> Add comment</li>
+    <li><strong>M:</strong> Add comment</li>
+    <li><strong>H:</strong> Highlight selected text</li>
+    <li><strong>X:</strong> Strikethrough selected text</li>
   </ul>
 </div>
     </div>
@@ -1245,5 +1299,7 @@
   <script src="lib/pdf.min.js"></script>
   <script src="lib/pdf-lib.min.js"></script>
   <script src="viewer.js"></script>
+  <div id="printContainer"></div>
+
 </body>
 </html>
