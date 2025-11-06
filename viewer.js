@@ -2151,20 +2151,22 @@ function goToPageNumber(n){
       renderAll();
     }
 
-    zoomInBtn.onclick = () => {
+    function performZoomIn() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
       const i = snapIndexFromRelative(ratio);
       const next = ZOOM_STEPS[clamp(i + 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
-    };
-    zoomOutBtn.onclick = () => {
+    }
+    function performZoomOut() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
       const i = snapIndexFromRelative(ratio);
       const next = ZOOM_STEPS[clamp(i - 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
-    };
+    }
+    if (zoomInBtn) zoomInBtn.onclick = () => performZoomIn();
+    if (zoomOutBtn) zoomOutBtn.onclick = () => performZoomOut();
 
 async function fitToAvailableWidth(fraction = 1) {
   if (!pdfDoc) return;
@@ -2172,7 +2174,7 @@ async function fitToAvailableWidth(fraction = 1) {
   if (!Number.isFinite(scale)) return;
   setScale(scale);
 }
-fitWidthBtn.onclick = () => fitToAvailableWidth();
+if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
 
     function applyReaderLayout() {
       document.body.classList.toggle('reader', readerMode);
@@ -2352,8 +2354,8 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       updatePageInfo();
     }
 
-    prevPageBtn.onclick = () => goToPage(-1);
-    nextPageBtn.onclick = () => goToPage(1);
+    if (prevPageBtn) prevPageBtn.onclick = () => goToPage(-1);
+    if (nextPageBtn) nextPageBtn.onclick = () => goToPage(1);
 
     document.addEventListener('keydown', (e) => {
       const tag = e.target.tagName;
@@ -2382,20 +2384,32 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
         toggleReader();
         return;
       }
-      if (!editing && e.key === '+') zoomInBtn.click();
-      if (!editing && e.key === '-') zoomOutBtn.click();
+      if (!editing && e.key === '+') performZoomIn();
+      if (!editing && e.key === '-') performZoomOut();
 
   if (!editing && (e.key === 't' || e.key === 'T')) {
     e.preventDefault();
-    selectTextTool.click();
+    if (selectTextTool) {
+      selectTextTool.click();
+    } else {
+      setTool('selectText');
+    }
   }
   if (!editing && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault();
-    textTool.click();
+    if (textTool) {
+      textTool.click();
+    } else {
+      setTool('textOnce');
+    }
   }
   if (!editing && (e.key === 's' || e.key === 'S')) {
     e.preventDefault();
-    signatureTool.click();
+    if (signatureTool) {
+      signatureTool.click();
+    } else {
+      setTool('signatureOnce');
+    }
   }
   if (!editing && commentTool && (e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
@@ -2415,7 +2429,11 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
   }
   if (!editing && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
-    fitWidthBtn.click();
+    if (fitWidthBtn) {
+      fitWidthBtn.click();
+    } else {
+      fitToAvailableWidth();
+    }
   }
   if (!editing && (e.key === 'p' || e.key === 'P')) {
     e.preventDefault();
@@ -2627,10 +2645,13 @@ document.addEventListener('click', (e) => {
 }, true);
 
 /* Zoom menu actions (reuse existing controls) */
-document.getElementById('zmIn')?.addEventListener('click', () => { zoomInBtn.click(); hideZoomMenu(); });
-document.getElementById('zmOut')?.addEventListener('click', () => { zoomOutBtn.click(); hideZoomMenu(); });
+document.getElementById('zmIn')?.addEventListener('click', () => { performZoomIn(); hideZoomMenu(); });
+document.getElementById('zmOut')?.addEventListener('click', () => { performZoomOut(); hideZoomMenu(); });
 document.getElementById('zmFit')?.addEventListener('click', () => { fitToAvailableWidth(); hideZoomMenu(); });
-document.getElementById('zmReader')?.addEventListener('click', () => { toggleReaderBtn.click(); hideZoomMenu(); });
+document.getElementById('zmReader')?.addEventListener('click', () => {
+  toggleReader();
+  hideZoomMenu();
+});
 
 /* Keep boxes in sync whenever scale or page changes */
 const _origSetScale = setScale;

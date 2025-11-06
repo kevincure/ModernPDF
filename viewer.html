@@ -106,13 +106,6 @@
     align-items: flex-start;
   }
 
-  .button-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-  }
-
   .header.tool-mode {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
     border-radius: 16px;
@@ -581,10 +574,6 @@
   .nav-btn.ghost-btn:hover {
     background: #fff;
     box-shadow: 0 3px 6px rgba(0, 0, 0, .18);
-  }
-
-  #file {
-    display: none;
   }
 
   .hidden {
@@ -1066,55 +1055,6 @@
   <div class="app">
     <div class="header" id="leftBar">
       <div class="header-top">
-        <input id="file" type="file" accept="application/pdf" />
-
-        <div class="toolbar-sep" aria-hidden="true"></div>
-
-        <div class="button-stack" role="group" aria-label="Annotation tools">
-          <button class="nav-btn icon-btn" id="selectTextTool" title="Select text (T)" aria-label="Select text">
-            <img src="icons/i-cursor.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="textTool" title="Add text (A)" aria-label="Add text">
-            <img src="icons/font.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="signatureTool" title="Add signature (S)" aria-label="Add signature">
-            <img src="icons/pen-fancy.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="commentTool" title="Add comment (M)" aria-label="Add comment">
-            <img src="icons/comment-dots.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-        </div>
-
-        <div class="toolbar-sep" aria-hidden="true"></div>
-
-        <div class="button-stack" role="group" aria-label="View controls">
-          <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)" aria-label="Zoom out">
-            <img src="icons/magnifying-glass-minus.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)" aria-label="Zoom in">
-            <img src="icons/magnifying-glass-plus.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width (W)" aria-label="Fit width">
-            <img src="icons/left-right.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="toggleReaderBtn" title="Full screen (F)" aria-label="Toggle reader mode">
-            <img src="icons/maximize.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-        </div>
-
-        <div class="toolbar-sep" aria-hidden="true"></div>
-
-        <div class="button-stack" role="group" aria-label="Page navigation">
-          <button class="nav-btn icon-btn" id="prevPageBtn" title="Previous page" aria-label="Previous page">
-            <img src="icons/arrow-left.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-          <button class="nav-btn icon-btn" id="nextPageBtn" title="Next page" aria-label="Next page">
-            <img src="icons/arrow-right.svg" class="icon-svg" alt="" aria-hidden="true">
-          </button>
-        </div>
-
-        <div class="toolbar-sep" aria-hidden="true"></div>
-
         <div class="search-container span-2">
           <input type="text" id="searchInput" placeholder="Find..." />
           <div class="search-controls">
