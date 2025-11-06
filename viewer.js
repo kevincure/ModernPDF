@@ -2392,7 +2392,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
     if (selectTextTool) {
       selectTextTool.click();
     } else {
-      setTool('selectText');
+      setTool(currentTool === 'selectText' ? 'select' : 'selectText');
     }
   }
   if (!editing && (e.key === 'a' || e.key === 'A')) {
@@ -2407,13 +2407,21 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
     e.preventDefault();
     if (signatureTool) {
       signatureTool.click();
+    } else if (!signatureDataUrl) {
+      openIdentityModal();
     } else {
       setTool('signatureOnce');
     }
   }
-  if (!editing && commentTool && (e.key === 'm' || e.key === 'M')) {
+  if (!editing && (e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
-    commentTool.click();
+    if (commentTool) {
+      commentTool.click();
+    } else if (!userName) {
+      openIdentityModal();
+    } else {
+      setTool('commentOnce');
+    }
   }
   if (!editing && (e.key === 'h' || e.key === 'H')) {
     if (applyMarkupFromSelection('highlight')) {
