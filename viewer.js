@@ -32,6 +32,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let signatureDataUrl = localStorage.getItem('userSignature') || null;
     let nextAnnoId = 1, openCommentTarget = null;
     let userName = localStorage.getItem('userName') || '';
+    let queuedTool = null;
     let identityHasInk = !!signatureDataUrl;
     const TOOL_LABELS = {
       select: 'Read mode',
@@ -440,7 +441,8 @@ mainEl.addEventListener('scroll', ()=>{
           slot.layer.style.pointerEvents = toolActive ? 'auto' : 'none';
         }
         if (slot.pdfLayer) {
-          slot.pdfLayer.style.pointerEvents = toolActive ? 'none' : 'auto';
+          const shouldBlockPdfLayer = selecting || toolActive;
+          slot.pdfLayer.style.pointerEvents = shouldBlockPdfLayer ? 'none' : 'auto';
         }
       });
       if (selecting) renderTextLayersForAll();
@@ -1461,7 +1463,7 @@ function goToPageNumber(n){
 
     if (identityBtn) {
       identityBtn.onclick = () => {
-        closeHamburger();
+        queuedTool = null;
         openIdentityModal();
       };
     }
@@ -1471,7 +1473,7 @@ function goToPageNumber(n){
     if (commentTool) {
       commentTool.onclick = () => {
         if (!userName) {
-          openIdentityModal();
+          queueToolAfterIdentity('commentOnce');
         } else {
           setTool('commentOnce');
         }
@@ -1480,7 +1482,7 @@ function goToPageNumber(n){
     if (signatureTool) {
       signatureTool.onclick = () => {
         if (!signatureDataUrl) {
-          openIdentityModal();
+          queueToolAfterIdentity('signatureOnce');
         } else {
           setTool('signatureOnce');
         }
@@ -1490,6 +1492,11 @@ function goToPageNumber(n){
       selectTextTool.onclick = () => {
         setTool(currentTool === 'selectText' ? 'select' : 'selectText');
       };
+    }
+
+    function queueToolAfterIdentity(toolName) {
+      queuedTool = toolName;
+      openIdentityModal();
     }
 
     function openIdentityModal() {
@@ -1511,12 +1518,24 @@ function goToPageNumber(n){
       requestAnimationFrame(() => identityName.focus());
     }
 
-    function closeIdentityModal() {
+    function closeIdentityModal(applyQueuedTool = false) {
       identityModal.classList.add('hidden');
+      const pending = queuedTool;
+      queuedTool = null;
+      if (applyQueuedTool) {
+        if (pending === 'signatureOnce' && signatureDataUrl) {
+          setTool('signatureOnce');
+          return;
+        }
+        if (pending === 'commentOnce' && userName) {
+          setTool('commentOnce');
+          return;
+        }
+      }
       setTool('select');
     }
 
-    if (helpBtn) helpBtn.onclick = () =>  { closeHamburger(); helpModal.classList.remove('hidden'); }
+    if (helpBtn) helpBtn.onclick = () =>  { helpModal.classList.remove('hidden'); }
     if (helpClose) helpClose.onclick = () => helpModal.classList.add('hidden');
     if (helpModal) {
       helpModal.addEventListener('click', (e) => {
@@ -2128,7 +2147,10 @@ function goToPageNumber(n){
     };
     cs.close && (cs.close.onclick = closeCommentUI);
     cs.hide.onclick = closeCommentUI;
-    cs.identityBtn && (cs.identityBtn.onclick = () => openIdentityModal());
+    cs.identityBtn && (cs.identityBtn.onclick = () => {
+      queuedTool = null;
+      openIdentityModal();
+    });
 
     document.addEventListener('click', (e) => {
       if (!cs.panel.classList.contains('open')) return;
@@ -2152,20 +2174,22 @@ function goToPageNumber(n){
       renderAll();
     }
 
-    zoomInBtn.onclick = () => {
+    function performZoomIn() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
       const i = snapIndexFromRelative(ratio);
       const next = ZOOM_STEPS[clamp(i + 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
-    };
-    zoomOutBtn.onclick = () => {
+    }
+    function performZoomOut() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
       const i = snapIndexFromRelative(ratio);
       const next = ZOOM_STEPS[clamp(i - 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
-    };
+    }
+    if (zoomInBtn) zoomInBtn.onclick = () => performZoomIn();
+    if (zoomOutBtn) zoomOutBtn.onclick = () => performZoomOut();
 
 async function fitToAvailableWidth(fraction = 1) {
   if (!pdfDoc) return;
@@ -2173,7 +2197,7 @@ async function fitToAvailableWidth(fraction = 1) {
   if (!Number.isFinite(scale)) return;
   setScale(scale);
 }
-fitWidthBtn.onclick = () => fitToAvailableWidth();
+if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
 
     function applyReaderLayout() {
       document.body.classList.toggle('reader', readerMode);
@@ -2353,8 +2377,8 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       updatePageInfo();
     }
 
-    prevPageBtn.onclick = () => goToPage(-1);
-    nextPageBtn.onclick = () => goToPage(1);
+    if (prevPageBtn) prevPageBtn.onclick = () => goToPage(-1);
+    if (nextPageBtn) nextPageBtn.onclick = () => goToPage(1);
 
     document.addEventListener('keydown', (e) => {
       const tag = e.target.tagName;
@@ -2383,24 +2407,44 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
         toggleReader();
         return;
       }
-      if (!editing && e.key === '+') zoomInBtn.click();
-      if (!editing && e.key === '-') zoomOutBtn.click();
+      if (!editing && e.key === '+') performZoomIn();
+      if (!editing && e.key === '-') performZoomOut();
 
   if (!editing && (e.key === 't' || e.key === 'T')) {
     e.preventDefault();
-    selectTextTool.click();
+    if (selectTextTool) {
+      selectTextTool.click();
+    } else {
+      setTool(currentTool === 'selectText' ? 'select' : 'selectText');
+    }
   }
   if (!editing && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault();
-    textTool.click();
+    if (textTool) {
+      textTool.click();
+    } else {
+      setTool('textOnce');
+    }
   }
   if (!editing && (e.key === 's' || e.key === 'S')) {
     e.preventDefault();
-    signatureTool.click();
+    if (signatureTool) {
+      signatureTool.click();
+    } else if (!signatureDataUrl) {
+      queueToolAfterIdentity('signatureOnce');
+    } else {
+      setTool('signatureOnce');
+    }
   }
-  if (!editing && commentTool && (e.key === 'm' || e.key === 'M')) {
+  if (!editing && (e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
-    commentTool.click();
+    if (commentTool) {
+      commentTool.click();
+    } else if (!userName) {
+      queueToolAfterIdentity('commentOnce');
+    } else {
+      setTool('commentOnce');
+    }
   }
   if (!editing && (e.key === 'h' || e.key === 'H')) {
     if (applyMarkupFromSelection('highlight')) {
@@ -2416,7 +2460,11 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
   }
   if (!editing && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
-    fitWidthBtn.click();
+    if (fitWidthBtn) {
+      fitWidthBtn.click();
+    } else {
+      fitToAvailableWidth();
+    }
   }
   if (!editing && (e.key === 'p' || e.key === 'P')) {
     e.preventDefault();
@@ -2501,34 +2549,6 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       textToolbarAnno = null;
       textStylePanel.classList.add('hidden');
     }
-
-const hamburgerBtn = document.getElementById('hamburgerBtn');
-const hamburgerMenu = document.getElementById('hamburgerMenu');
-const menuClose = document.getElementById('menuClose');
-const menuOverlay = document.getElementById('menuOverlay');
-
-hamburgerBtn.addEventListener('click', () => {
-  hamburgerMenu.classList.add('open');
-  menuOverlay.classList.add('visible');
-});
-
-menuClose.addEventListener('click', () => {
-  hamburgerMenu.classList.remove('open');
-  menuOverlay.classList.remove('visible');
-});
-
-menuOverlay.addEventListener('click', () => {
-  hamburgerMenu.classList.remove('open');
-  menuOverlay.classList.remove('visible');
-});
-
-// Close menu when any menu item is clicked
-document.querySelectorAll('.menu-item').forEach(item => {
-  item.addEventListener('click', () => {
-    hamburgerMenu.classList.remove('open');
-    menuOverlay.classList.remove('visible');
-  });
-});
 
 /* ===== Find UI: show up/down + count only when there is input ===== */
 const searchContainer = document.querySelector('.search-container');
@@ -2647,10 +2667,6 @@ function hideZoomMenu() {
   zoomMenu.style.display = 'none';
   zoomMenu.setAttribute('aria-hidden', 'true');
 }
-function closeHamburger() {
-  document.getElementById('hamburgerMenu')?.classList.remove('open');
-  document.getElementById('menuOverlay')?.classList.remove('visible');
-}
 zoomBox?.addEventListener('click', (e) => {
   const visible = zoomMenu.style.display === 'block';
   if (visible) hideZoomMenu(); else showZoomMenu(e.currentTarget);
@@ -2660,10 +2676,13 @@ document.addEventListener('click', (e) => {
 }, true);
 
 /* Zoom menu actions (reuse existing controls) */
-document.getElementById('zmIn')?.addEventListener('click', () => { zoomInBtn.click(); hideZoomMenu(); });
-document.getElementById('zmOut')?.addEventListener('click', () => { zoomOutBtn.click(); hideZoomMenu(); });
+document.getElementById('zmIn')?.addEventListener('click', () => { performZoomIn(); hideZoomMenu(); });
+document.getElementById('zmOut')?.addEventListener('click', () => { performZoomOut(); hideZoomMenu(); });
 document.getElementById('zmFit')?.addEventListener('click', () => { fitToAvailableWidth(); hideZoomMenu(); });
-document.getElementById('zmReader')?.addEventListener('click', () => { toggleReaderBtn.click(); hideZoomMenu(); });
+document.getElementById('zmReader')?.addEventListener('click', () => {
+  toggleReader();
+  hideZoomMenu();
+});
 
 /* Keep boxes in sync whenever scale or page changes */
 const _origSetScale = setScale;
@@ -2776,8 +2795,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       }
       updateIdentityDisplay();
       updateToolbarStates();
-      identityModal.classList.add('hidden');
-      setTool('select');
+      closeIdentityModal(true);
     };
 
     setTool('select');
