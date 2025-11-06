@@ -32,6 +32,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let signatureDataUrl = localStorage.getItem('userSignature') || null;
     let nextAnnoId = 1, openCommentTarget = null;
     let userName = localStorage.getItem('userName') || '';
+    let queuedTool = null;
     let identityHasInk = !!signatureDataUrl;
     const TOOL_LABELS = {
       select: 'Read mode',
@@ -1461,6 +1462,7 @@ function goToPageNumber(n){
 
     if (identityBtn) {
       identityBtn.onclick = () => {
+        queuedTool = null;
         openIdentityModal();
       };
     }
@@ -1470,7 +1472,7 @@ function goToPageNumber(n){
     if (commentTool) {
       commentTool.onclick = () => {
         if (!userName) {
-          openIdentityModal();
+          queueToolAfterIdentity('commentOnce');
         } else {
           setTool('commentOnce');
         }
@@ -1479,7 +1481,7 @@ function goToPageNumber(n){
     if (signatureTool) {
       signatureTool.onclick = () => {
         if (!signatureDataUrl) {
-          openIdentityModal();
+          queueToolAfterIdentity('signatureOnce');
         } else {
           setTool('signatureOnce');
         }
@@ -1489,6 +1491,11 @@ function goToPageNumber(n){
       selectTextTool.onclick = () => {
         setTool(currentTool === 'selectText' ? 'select' : 'selectText');
       };
+    }
+
+    function queueToolAfterIdentity(toolName) {
+      queuedTool = toolName;
+      openIdentityModal();
     }
 
     function openIdentityModal() {
@@ -1510,8 +1517,20 @@ function goToPageNumber(n){
       requestAnimationFrame(() => identityName.focus());
     }
 
-    function closeIdentityModal() {
+    function closeIdentityModal(applyQueuedTool = false) {
       identityModal.classList.add('hidden');
+      const pending = queuedTool;
+      queuedTool = null;
+      if (applyQueuedTool) {
+        if (pending === 'signatureOnce' && signatureDataUrl) {
+          setTool('signatureOnce');
+          return;
+        }
+        if (pending === 'commentOnce' && userName) {
+          setTool('commentOnce');
+          return;
+        }
+      }
       setTool('select');
     }
 
@@ -2127,7 +2146,10 @@ function goToPageNumber(n){
     };
     cs.close && (cs.close.onclick = closeCommentUI);
     cs.hide.onclick = closeCommentUI;
-    cs.identityBtn && (cs.identityBtn.onclick = () => openIdentityModal());
+    cs.identityBtn && (cs.identityBtn.onclick = () => {
+      queuedTool = null;
+      openIdentityModal();
+    });
 
     document.addEventListener('click', (e) => {
       if (!cs.panel.classList.contains('open')) return;
@@ -2408,7 +2430,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
     if (signatureTool) {
       signatureTool.click();
     } else if (!signatureDataUrl) {
-      openIdentityModal();
+      queueToolAfterIdentity('signatureOnce');
     } else {
       setTool('signatureOnce');
     }
@@ -2418,7 +2440,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
     if (commentTool) {
       commentTool.click();
     } else if (!userName) {
-      openIdentityModal();
+      queueToolAfterIdentity('commentOnce');
     } else {
       setTool('commentOnce');
     }
@@ -2772,8 +2794,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       }
       updateIdentityDisplay();
       updateToolbarStates();
-      identityModal.classList.add('hidden');
-      setTool('select');
+      closeIdentityModal(true);
     };
 
     setTool('select');
