@@ -525,6 +525,24 @@ function goToPageNumber(n){
   renderWindowAroundCurrent();
 }
 
+    function syncOverlayGeometry(slot) {
+      if (!slot) return;
+      const baseWidth = slot.baseW || (slot.canvas?.width ? slot.canvas.width / (dpr || 1) : 0);
+      const baseHeight = slot.baseH || (slot.canvas?.height ? slot.canvas.height / (dpr || 1) : 0);
+      if (slot.layer) {
+        slot.layer.style.width = `${baseWidth}px`;
+        slot.layer.style.height = `${baseHeight}px`;
+        slot.layer.style.transformOrigin = '0 0';
+        slot.layer.style.transform = `scale(${currentScale})`;
+      }
+      if (slot.pdfLayer) {
+        slot.pdfLayer.style.width = `${baseWidth}px`;
+        slot.pdfLayer.style.height = `${baseHeight}px`;
+        slot.pdfLayer.style.transformOrigin = '0 0';
+        slot.pdfLayer.style.transform = `scale(${currentScale})`;
+      }
+    }
+
     async function renderPage(num) {
       const page = await pdfDoc.getPage(num);
       const base = page.getViewport({ scale: 1 });
@@ -581,6 +599,8 @@ function goToPageNumber(n){
         slot.renderTask = null;
       }
 
+      syncOverlayGeometry(slot);
+
       await renderPdfAnnotations(slot, page, viewport);
     }
 
@@ -618,12 +638,14 @@ function goToPageNumber(n){
         const parent = slot.pdfLayer.parentElement;
         if (parent) {
           const replacement = slot.pdfLayer.cloneNode(false);
+          replacement.className = slot.pdfLayer.className;
           parent.replaceChild(replacement, slot.pdfLayer);
           slot.pdfLayer = replacement;
         } else {
           slot.pdfLayer.innerHTML = '';
         }
       }
+      syncOverlayGeometry(slot);
       const annotations = await page.getAnnotations({ intent: 'display' });
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
@@ -632,6 +654,24 @@ function goToPageNumber(n){
       const AnnotationLayerClass = pdfjsLib?.AnnotationLayer;
       if (typeof AnnotationLayerClass !== 'function') {
         console.warn('Annotation layer class missing; skipping interactive annotations.');
+        return;
+      }
+      const AnnotationType = pdfjsLib?.AnnotationType;
+      const displayAnnotations = Array.isArray(annotations)
+        ? annotations.filter(an => {
+            const type = an?.annotationType;
+            if (AnnotationType && type === AnnotationType.TEXT) {
+              return false;
+            }
+            const subtype = (an?.subtype || an?.subType || '').toString().toLowerCase();
+            if (!AnnotationType && subtype === 'text') {
+              return false;
+            }
+            return true;
+          })
+        : annotations;
+      if (!displayAnnotations.length) {
+        slot.pdfRenderTask = null;
         return;
       }
       const viewportForAnnots = viewport.clone({ dontFlip: false });
@@ -648,7 +688,7 @@ function goToPageNumber(n){
         viewport: viewportForAnnots
       });
       const task = layer.render({
-        annotations,
+        annotations: displayAnnotations,
         intent: 'display',
         viewport: viewportForAnnots,
         renderInteractiveForms: true,
@@ -1797,6 +1837,7 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         rects.forEach((rect, idx) => {
           const seg = document.createElement('div');
           seg.className = anno.type === 'highlight' ? 'highlight-anno' : 'strike-anno';
+          seg.style.position = 'absolute';
           seg.style.left = `${rect.x}px`;
           seg.style.top = `${rect.y}px`;
           seg.style.width = `${rect.w}px`;
