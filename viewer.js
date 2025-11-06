@@ -441,7 +441,8 @@ mainEl.addEventListener('scroll', ()=>{
           slot.layer.style.pointerEvents = toolActive ? 'auto' : 'none';
         }
         if (slot.pdfLayer) {
-          slot.pdfLayer.style.pointerEvents = toolActive ? 'none' : 'auto';
+          const shouldBlockPdfLayer = selecting || toolActive;
+          slot.pdfLayer.style.pointerEvents = shouldBlockPdfLayer ? 'none' : 'auto';
         }
       });
       if (selecting) renderTextLayersForAll();
