@@ -19,7 +19,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let annotations = {};
     let currentTool = 'select';
     let currentScale = 1;
-    const ZOOMS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    const DEFAULT_WIDTH_FRACTION = 0.8;
+    let defaultWidthScale = 1;
+    const ZOOM_STEPS = [0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    const MIN_SCALE = ZOOM_STEPS[0];
+    const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    const PRINT_RESOLUTION = 150;
+    const PRINT_UNITS = PRINT_RESOLUTION / 72;
     let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
     let dpr = window.devicePixelRatio || 1;
 
@@ -27,16 +33,80 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let nextAnnoId = 1, openCommentTarget = null;
     let userName = localStorage.getItem('userName') || '';
     let identityHasInk = !!signatureDataUrl;
+    const TOOL_LABELS = {
+      select: 'Read mode',
+      selectText: 'Select text',
+      textOnce: 'Annotate',
+      commentOnce: 'Add Comment',
+      signatureOnce: 'Signature'
+    };
 
     let resizeTimer = null, selectedAnnoEl = null;
     let isRendering = false, rerenderQueued = false;
     let scrollTimer = null;
     let searchResults = [];
     let currentMatchIndex = -1;
+    let lastSearchQuery = '';
+    let searchDirty = false;
     const deletedPdfThreads = [];
 
     const el = (id) => document.getElementById(id);
     const pagesEl = el('pages'), mainEl = el('main');
+    let printContainer = el('printContainer');
+    document.addEventListener('DOMContentLoaded', () => {
+      // viewer.html adds #printContainer after the script — grab it once DOM is ready
+      printContainer = document.getElementById('printContainer');
+    });
+
+    // Handle Ctrl/Cmd+P forwarded from the content script
+    window.addEventListener('message', (e) => {
+      if (e?.data?.type === 'PDF_VIEWER_PRINT' && pdfDoc) {
+        prepareForPrint().then(() => {
+          document.body.classList.add('print-ready');
+          window.print();
+        });
+      }
+    });
+    const modeIndicator = el('modeIndicator');
+    const annotationLinkService = {
+      externalLinkTarget: pdfjsLib?.LinkTarget?.BLANK ?? 0,
+      externalLinkRel: 'noopener noreferrer nofollow',
+      getDestinationHash(dest) {
+        if (typeof dest === 'string') return dest;
+        try { return JSON.stringify(dest); } catch (_) { return String(dest); }
+      },
+      getAnchorUrl(hash) {
+        return `#${hash}`;
+      },
+      setHash() {},
+      addLinkAttributes(element, data) {
+        if (!element) return;
+        if (data?.url) {
+          element.href = data.url;
+          element.target = '_blank';
+          element.rel = this.externalLinkRel;
+        } else if (data?.dest) {
+          element.href = this.getAnchorUrl(this.getDestinationHash(data.dest));
+        }
+      },
+      goToDestination(dest) {
+        if (!pdfDoc) return;
+        (async () => {
+          try {
+            const explicitDest = await pdfDoc.getDestination(dest);
+            if (!explicitDest) return;
+            const ref = explicitDest[0];
+            const pageIndex = await pdfDoc.getPageIndex(ref);
+            goToPageNumber(pageIndex + 1);
+          } catch (err) {
+            console.warn('Failed to follow destination', err);
+          }
+        })();
+      },
+      navigateTo(dest) {
+        this.goToDestination(dest);
+      }
+    };
     let loadErrorBanner = document.getElementById('loadErrorBanner');
     let loadErrorMessage = document.getElementById('loadErrorMessage');
     let loadErrorCopy = document.getElementById('loadErrorCopy');
@@ -157,21 +227,16 @@ const leftBar = document.getElementById('leftBar');
       const lb = leftBar?.getBoundingClientRect();
 
       if (mainEl && lb && leftBar) { // Added leftBar check
-         // Hide bar and reset padding if in tool mode
-         if (document.body.classList.contains('tool-mode-active')) {
-           leftBar.style.display = 'none';
-           mainEl.style.paddingLeft = '24px';
-           mainEl.style.cursor = 'crosshair';
-         } else { // Restore bar and set padding
-           leftBar.style.display = 'flex'; // Use flex, not block
-           mainEl.style.cursor = 'auto';
-           const lbWidth = lb.width || 0;
-           if (lbWidth > 0) {
-             // We rely on the CSS rule from Fix 1A to set padding
-             // but we must reset the inline style to allow CSS to take over
-             mainEl.style.paddingLeft = ''; 
-           }
-         }
+        const activeTool = document.body.classList.contains('tool-mode-active');
+        leftBar.style.display = 'flex';
+        leftBar.classList.toggle('tool-mode', activeTool);
+        mainEl.style.cursor = activeTool ? 'crosshair' : 'auto';
+        if (!activeTool) {
+          const lbWidth = lb.width || 0;
+          if (lbWidth > 0) {
+            mainEl.style.paddingLeft = '';
+          }
+        }
       }
 
       // The control width logic
@@ -179,7 +244,7 @@ const leftBar = document.getElementById('leftBar');
       document.documentElement.style.setProperty('--control-width', `${w}px`);
     }
 
-    const openBtn = el('openBtn'), fileInput = el('file'), saveBtn = el('saveBtn');
+    const fileInput = el('file'), saveBtn = el('saveBtn');
     const identityBtn = el('identityBtn'), textTool = el('textTool'), commentTool = el('commentTool'), signatureTool = el('signatureTool');
     const selectTextTool = el('selectTextTool');
     const zoomOutBtn = el('zoomOutBtn'), zoomInBtn = el('zoomInBtn'), fitWidthBtn = el('fitWidthBtn'), toggleReaderBtn = el('toggleReaderBtn');
@@ -226,7 +291,7 @@ function pageWindow(centerIndex){
   if(!pdfDoc) return [1,1];
   const pc = pdfDoc.numPages;
   const p = clamp(centerIndex+1, 1, pc); // 1-based page number
-  const SPAN = 10; // how many pages around current to render
+  const SPAN = 50; // how many pages around current to render
   return [Math.max(1, p-SPAN), Math.min(pc, p+SPAN)];
 }
 
@@ -237,7 +302,7 @@ async function renderWindowAroundCurrent(){
   // Ensure wrappers exist for layout stability
   for (let i = 1; i <= pdfDoc.numPages; i++) ensurePageSlot(i);
 
-  // Paint only current ±1 (and re-paint if scale/DPR changed)
+  // Paint only current page +/- predefined span above 
   const tasks = [];
   for (let i = start; i <= end; i++) {
     const slot = pages[i-1];
@@ -284,10 +349,20 @@ mainEl.addEventListener('scroll', ()=>{
 }, { passive: true });
 
 
-    function snapIndexFromScale(s) {
+    function getBaseScale() {
+      const base = defaultWidthScale || 1;
+      return base > 0 ? base : 1;
+    }
+
+    function getRelativeScale(scale = currentScale) {
+      const base = getBaseScale();
+      return clamp(scale / base, ZOOM_STEPS[0], ZOOM_STEPS[ZOOM_STEPS.length - 1]);
+    }
+
+    function snapIndexFromRelative(ratio) {
       let best = 0, d = 1e9;
-      for (let i = 0; i < ZOOMS.length; i++) {
-        const di = Math.abs(ZOOMS[i] - s);
+      for (let i = 0; i < ZOOM_STEPS.length; i++) {
+        const di = Math.abs(ZOOM_STEPS[i] - ratio);
         if (di < d) {
           d = di;
           best = i;
@@ -312,7 +387,7 @@ mainEl.addEventListener('scroll', ()=>{
       const vp = p.getViewport({ scale: 1 });
       const { width: w, height: h } = getMainContentSize();
       if (w <= 0 || h <= 0) return currentScale;
-      return clamp(Math.min(w / vp.width, h / vp.height), ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+      return clamp(Math.min(w / vp.width, h / vp.height), MIN_SCALE, MAX_SCALE);
     }
 
     function setTool(name) {
@@ -325,15 +400,25 @@ mainEl.addEventListener('scroll', ()=>{
       updateInteractionModes();
       const isToolMode = name === 'textOnce' || name === 'commentOnce' || name === 'signatureOnce';
       document.body.classList.toggle('tool-mode-active', isToolMode);
+      updateModeIndicator();
       setControlWidth(); // Re-calculate padding and visibility
     }
+
+    function updateModeIndicator() {
+      if (!modeIndicator) return;
+      const label = TOOL_LABELS[currentTool] || TOOL_LABELS.select;
+      modeIndicator.textContent = label;
+      modeIndicator.classList.toggle('is-active', currentTool !== 'select');
+    }
+
+    updateModeIndicator();
+    setControlWidth();
 
     function updateIdentityDisplay() {
       if (cs.authorName) cs.authorName.textContent = userName || 'Set name';
     }
 
     function updateToolbarStates() {
-      if (openBtn) openBtn.classList.toggle('needs-file', !pdfDoc);
       if (saveBtn) saveBtn.disabled = !pdfDoc;
       if (toggleReaderBtn) toggleReaderBtn.classList.toggle('active', readerMode);
       if (identityBtn) identityBtn.title = userName ? `Signed in as ${userName}` : 'Set name & signature';
@@ -342,6 +427,9 @@ mainEl.addEventListener('scroll', ()=>{
 
     function updateInteractionModes() {
       const selecting = currentTool === 'selectText';
+      const toolActive  = (currentTool === 'textOnce' ||
+                           currentTool === 'commentOnce' ||
+                           currentTool === 'signatureOnce');
       pages.forEach(slot => {
         if (!slot) return;
         if (slot.textLayer) {
@@ -349,7 +437,10 @@ mainEl.addEventListener('scroll', ()=>{
           slot.textLayer.style.pointerEvents = selecting ? 'auto' : 'none';
         }
         if (slot.layer) {
-          slot.layer.style.pointerEvents = selecting ? 'none' : 'auto';
+          slot.layer.style.pointerEvents = toolActive ? 'auto' : 'none';
+        }
+        if (slot.pdfLayer) {
+          slot.pdfLayer.style.pointerEvents = toolActive ? 'none' : 'auto';
         }
       });
       if (selecting) renderTextLayersForAll();
@@ -368,21 +459,31 @@ mainEl.addEventListener('scroll', ()=>{
       return { r, g, b };
     }
 
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
     function ensurePageSlot(num) {
       let slot = pages[num - 1];
       if (slot) return slot;
 
       const canvas = document.createElement('canvas');
-      const layer = document.createElement('div');
-      layer.className = 'layer';
       const textLayer = document.createElement('div');
       textLayer.className = 'textLayer hidden';
+      const pdfLayer = document.createElement('div');
+      pdfLayer.className = 'pdf-annotation-layer annotationLayer';
+      const layer = document.createElement('div');
+      layer.className = 'layer';
       const wrap = document.createElement('div');
       wrap.className = 'page';
       wrap.dataset.page = num;
 
       wrap.appendChild(canvas);
       wrap.appendChild(textLayer);
+      wrap.appendChild(pdfLayer);
       wrap.appendChild(layer);
       pagesEl.appendChild(wrap);
 
@@ -390,11 +491,15 @@ mainEl.addEventListener('scroll', ()=>{
         num,
         canvas,
         ctx: canvas.getContext('2d'),
+        pdfLayer,
         layer,
         textLayer,
         baseW: 0,
         baseH: 0,
-        renderTask: null
+        renderTask: null,
+        pdfRenderTask: null,
+        pdfAnnotationLayer: null,
+        pdfRenderToken: 0
       };
       pages[num - 1] = slot;
 
@@ -409,6 +514,15 @@ mainEl.addEventListener('scroll', ()=>{
             s.renderTask.cancel();
           } catch (_) {}
           s.renderTask = null;
+        }
+        if (s) {
+          s.pdfRenderToken++;
+          if (s.pdfRenderTask && typeof s.pdfRenderTask.cancel === 'function') {
+            try { s.pdfRenderTask.cancel(); } catch (_) {}
+          }
+          s.pdfRenderTask = null;
+          s.pdfAnnotationLayer = null;
+          if (s.pdfLayer) s.pdfLayer.innerHTML = '';
         }
       });
     }
@@ -426,6 +540,18 @@ function goToPageNumber(n){
   updatePageInfo();
   renderWindowAroundCurrent();
 }
+
+    function syncPdfLayerTransform(slot, viewport) {
+      if (!slot?.pdfLayer) return;
+      const width = viewport?.width ?? ((slot.baseW || 0) * currentScale);
+      const height = viewport?.height ?? ((slot.baseH || 0) * currentScale);
+      slot.pdfLayer.style.width = `${width}px`;
+      slot.pdfLayer.style.height = `${height}px`;
+      slot.pdfLayer.style.left = '0';
+      slot.pdfLayer.style.top = '0';
+      slot.pdfLayer.style.transformOrigin = '0 0';
+      slot.pdfLayer.style.transform = '';
+    }
 
     async function renderPage(num) {
       const page = await pdfDoc.getPage(num);
@@ -456,6 +582,7 @@ function goToPageNumber(n){
       slot.layer.style.width = `${base.width}px`;
       slot.layer.style.height = `${base.height}px`;
       slot.layer.style.transform = `scale(${currentScale})`;
+      syncPdfLayerTransform(slot, viewport);
 
       slot.textLayer.style.width = `${viewport.width}px`;
       slot.textLayer.style.height = `${viewport.height}px`;
@@ -476,6 +603,8 @@ function goToPageNumber(n){
       } finally {
         slot.renderTask = null;
       }
+
+      await renderPdfAnnotations(slot, page, viewport);
     }
 
     async function renderTextLayer(num) {
@@ -498,6 +627,82 @@ function goToPageNumber(n){
       await task.promise;
     }
 
+    async function renderPdfAnnotations(slot, page, viewport) {
+      if (!slot.pdfLayer) return;
+      slot.pdfRenderToken++;
+      const renderToken = slot.pdfRenderToken;
+      if (slot.pdfRenderTask && typeof slot.pdfRenderTask.cancel === 'function') {
+        try { slot.pdfRenderTask.cancel(); } catch (_) {}
+      }
+      slot.pdfRenderTask = null;
+      slot.pdfAnnotationLayer = null;
+
+      if (slot.pdfLayer) {
+        const parent = slot.pdfLayer.parentElement;
+        if (parent) {
+          const replacement = slot.pdfLayer.cloneNode(false);
+          parent.replaceChild(replacement, slot.pdfLayer);
+          slot.pdfLayer = replacement;
+        } else {
+          slot.pdfLayer.innerHTML = '';
+        }
+        syncPdfLayerTransform(slot, viewport);
+      }
+      const allAnnots = await page.getAnnotations({ intent: 'display' });
+      // Drop sticky-note comments; we render our own pins/threads for those.
+      const annotations = allAnnots.filter(a => {
+        const t = a.annotationType ?? a.subtype ?? a.subType;
+        // pdf.js: AnnotationType.TEXT === 1
+         return t !== 1 && t !== 'Text' && t !== 28 && t !== 'Popup';
+      });
+      if (!annotations || !annotations.length) {
+        slot.pdfRenderTask = null;
+        return;
+      }
+      const AnnotationLayerClass = pdfjsLib?.AnnotationLayer;
+      if (typeof AnnotationLayerClass !== 'function') {
+        console.warn('Annotation layer class missing; skipping interactive annotations.');
+        return;
+      }
+      const viewportForAnnots = viewport.clone({ dontFlip: false });
+      const nullL10n = pdfjsLib?.NullL10n || {
+        get(str) { return Promise.resolve(str); },
+        translate() { return Promise.resolve(); }
+      };
+      const layer = new AnnotationLayerClass({
+        div: slot.pdfLayer,
+        accessibilityManager: null,
+        annotationCanvasMap: null,
+        l10n: nullL10n,
+        page,
+        viewport: viewportForAnnots
+      });
+      const renderTask = layer.render({
+        annotations,
+        intent: 'display',
+        viewport: viewportForAnnots,
+        renderInteractiveForms: true,
+        annotationStorage: pdfDoc?.annotationStorage,
+        linkService: annotationLinkService,
+        downloadManager: null
+      });
+      slot.pdfRenderTask = renderTask;
+      try {
+        if (renderTask && 'promise' in renderTask && renderTask.promise) {
+          await renderTask.promise;
+        } else {
+          await renderTask;
+        }
+        if (slot.pdfRenderToken === renderToken) {
+          slot.pdfAnnotationLayer = layer;
+        }
+      } catch (err) {
+        if (!(err && err.name === 'RenderingCancelledException')) {
+          console.warn('Annotation layer render failed', err);
+        }
+      }
+    }
+
     async function renderTextLayersForAll() {
       if (!pdfDoc) return;
       for (let i = 1; i <= pdfDoc.numPages; i++) {
@@ -512,7 +717,7 @@ function goToPageNumber(n){
       }
       isRendering = true;
 
-      pagesEl.querySelectorAll('.text-anno, .sig-anno, .comment-pin').forEach(el => el.remove());
+      pagesEl.querySelectorAll('.text-anno, .sig-anno, .comment-pin, .markup-anno').forEach(el => el.remove());
 
       try {
         const keepPos = pagesEl.scrollHeight > 0
@@ -640,14 +845,14 @@ function goToPageNumber(n){
               const thread = [];
               const rootAuthor = getAuthor(g.root) || 'Imported Author';
               const rootText = (g.root.contentsObj?.str || g.root.contents || g.root.content || '').trim();
-              if (rootText) thread.push({ author: rootAuthor, text: rootText, time: '' });
+              if (rootText) thread.push({ author: rootAuthor, text: rootText, time: '', imported: true });
 
               const sortedReplies = g.replies.sort((a, b) => (a.creationDate || '').localeCompare(b.creationDate || ''));
 
               for (const rep of sortedReplies) {
                 const repAuthor = getAuthor(rep) || 'Imported Author';
                 const repText = (rep.contentsObj?.str || rep.contents || rep.content || '').trim();
-                if (repText) thread.push({ author: repAuthor, text: repText, time: '' });
+                if (repText) thread.push({ author: repAuthor, text: repText, time: '', imported: true });
               }
 
               if (thread.length > 0) {
@@ -656,6 +861,7 @@ function goToPageNumber(n){
                   x,
                   y,
                   thread,
+                  type: 'comment',
                   origin: 'pdf',
                   _importedCount: thread.length
                 });
@@ -675,6 +881,7 @@ function goToPageNumber(n){
         const pageKey = String(result.pageNum);
         if (!annotations[pageKey]) annotations[pageKey] = [];
         for (const anno of result.annotations) {
+          if (anno.type === 'comment') normalizeCommentAnnotation(anno);
           anno.id = maxId++;
           annotations[pageKey].push(anno);
         }
@@ -689,6 +896,11 @@ function goToPageNumber(n){
       currentMatchIndex = -1;
       searchStatus.textContent = '0 / 0';
       searchInput.value = '';
+      lastSearchQuery = '';
+      searchDirty = false;
+      if (searchContainer) {
+        searchContainer.classList.remove('has-query');
+      }
     }
 
     function updateActiveHighlight() {
@@ -718,6 +930,7 @@ function goToPageNumber(n){
     async function performSearch() {
       if (!pdfDoc) return;
       const query = (searchInput.value || '').trim().toLowerCase();
+      lastSearchQuery = query;
 
       searchResults.forEach(res => res.element?.remove());
       searchResults = [];
@@ -725,6 +938,7 @@ function goToPageNumber(n){
 
       if (!query) {
         updateActiveHighlight();
+        searchDirty = false;
         return;
       }
 
@@ -762,37 +976,62 @@ function goToPageNumber(n){
         }
       }
       updateActiveHighlight();
+      searchDirty = false;
     }
 
     async function loadPdfBytesArray(buf) {
       const data = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-      pdfBytes = data; // No need to copy on load
-      originalPdfBytes = null; // Only copy when we need to save
+      const stable = data.slice ? data.slice() : new Uint8Array(data);
+      pdfBytes = stable;
+      originalPdfBytes = stable.slice();
 
       const loading = pdfjsLib.getDocument({ data: pdfBytes });
       pdfDoc = await loading.promise;
 
+      printPrepared = false;
+      printInFlight = null;
+      if (printContainer) printContainer.innerHTML = '';
+
       annotations = {};
       nextAnnoId = 1;
+      deletedPdfThreads.length = 0;
 
       await importPdfComments();
 
-      currentScale = 1;
       readerMode = false;
-      readerPrevScale = 1;
       currentPageIndex = 0;
+
+      const baseScale = await computeWidthScale(DEFAULT_WIDTH_FRACTION);
+      if (Number.isFinite(baseScale)) {
+        defaultWidthScale = baseScale;
+        currentScale = baseScale;
+        readerPrevScale = baseScale;
+      } else {
+        currentScale = 1;
+        defaultWidthScale = currentScale;
+        readerPrevScale = 1;
+      }
 
       // Use windowing - only render visible pages initially
       await renderWindowAroundCurrent();
+      rehydrateAnnotations();
+      updatePageInfo();
       setTool('select');
       hideTextToolbar();
       clearSearch();
       closeCommentUI();
       updateToolbarStates();
+
+      if (mainEl) {
+        requestAnimationFrame(() => {
+          if (document.activeElement !== mainEl) {
+            mainEl.focus({ preventScroll: true });
+          }
+        });
+      }
     }
 
-    openBtn.onclick = () => fileInput.click();
-    fileInput.onchange = async (e) => {
+    if (fileInput) fileInput.onchange = async (e) => {
       const f = e.target.files[0];
       if (!f) return;
       const b = await f.arrayBuffer();
@@ -849,24 +1088,59 @@ function goToPageNumber(n){
         return;
       }
 
-      try {
-        let sourceBytes = pdfBytes;
-        if (!sourceBytes || sourceBytes.length === 0) {
-      // Try to reload from original source
-      const u = new URL(location.href);
-      const src = u.searchParams.get('src');
-      
-      if (src && isExtension) {
-        const response = await sendRuntimeMessage({ action: 'fetchPdf', url: src });
-        if (response?.success && response.data) {
-          sourceBytes = new Uint8Array(response.data);
-        }
+
+      // Helper: find nearest existing Text annotation to use as IRT
+      function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
+          try {
+            const N = PDFLib.PDFName;
+            const arr = annotsArray.asArray ? annotsArray.asArray() : (annotsArray.array || []);
+            let bestRef = null, bestD2 = 1e12;
+            for (const ref of arr) {
+              const dict = doc.context.lookup(ref);
+              if (!dict || String(dict.get(N.of('Subtype'))) !== '/Text') continue;
+              const rect = dict.get(N.of('Rect'));
+              if (!rect || !rect.asArray) continue;
+              const nums = rect.asArray().map(n =>
+               n?.number !== undefined ? n.number : (n?.asNumber ? n.asNumber() : Number(n))
+              );
+              const [x1,y1,x2,y2] = nums;
+              const rx1 = Math.min(x1, x2);
+              const ry2 = Math.max(y1, y2);
+              // x is a.x (which is x1 from import)
+              // y is ph - a.y (which is y2 from import)
+              const dx = rx1 - x, dy = ry2 - y;
+              if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) { // Use tight tolerance
+                const d2 = dx*dx + dy*dy;
+                if (d2 < bestD2) { bestD2 = d2; bestRef = ref; }
+              }
+            }
+            return bestRef;
+          } catch { return null; }
       }
-    }
-    
-    if (!sourceBytes || sourceBytes.length === 0) {
-      throw new Error('No PDF data available to save');
-    }
+
+
+      try {
+        let sourceBytes = (pdfBytes && pdfBytes.length) ? pdfBytes : null;
+        if ((!sourceBytes || sourceBytes.length === 0) && originalPdfBytes?.length) {
+          sourceBytes = originalPdfBytes;
+        }
+
+        if (!sourceBytes || sourceBytes.length === 0) {
+          // Try to reload from original source
+          const u = new URL(location.href);
+          const src = u.searchParams.get('src');
+
+          if (src && isExtension) {
+            const response = await sendRuntimeMessage({ action: 'fetchPdf', url: src });
+            if (response?.success && response.data) {
+              sourceBytes = new Uint8Array(response.data);
+            }
+          }
+        }
+
+        if (!sourceBytes || sourceBytes.length === 0) {
+          throw new Error('No PDF data available to save');
+        }
         const doc = await PDFLib.PDFDocument.load(sourceBytes);
         doc.setModificationDate?.(new Date());
 
@@ -928,6 +1202,91 @@ function goToPageNumber(n){
         };
 
         const pagesLib = doc.getPages();
+
+        async function applyFormValues(pdfLibDoc) {
+          if (!pdfDoc?.annotationStorage || !pdfLibDoc?.getForm) return;
+          let form;
+          try {
+            form = pdfLibDoc.getForm();
+          } catch (err) {
+            console.warn('Form access failed:', err);
+            return;
+          }
+          if (!form) return;
+          let fieldObjects = null;
+          try {
+            fieldObjects = await pdfDoc.getFieldObjects?.();
+          } catch (err) {
+            console.warn('Reading form field metadata failed:', err);
+          }
+          if (!fieldObjects) return;
+          const pdfFields = form.getFields();
+          if (!pdfFields?.length) return;
+          const fieldMap = new Map(pdfFields.map(f => [f.getName(), f]));
+          let storage = null;
+          try {
+            storage = pdfDoc.annotationStorage?.getAll?.();
+          } catch (err) {
+            console.warn('Reading annotation storage failed:', err);
+          }
+          const storageLookup = storage && typeof storage === 'object' ? storage : {};
+          for (const [name, widgets] of Object.entries(fieldObjects)) {
+            const field = fieldMap.get(name);
+            if (!field) continue;
+            const widgetArray = Array.isArray(widgets) ? widgets : [widgets];
+            let value = widgetArray.find(w => w && w.value !== undefined)?.value;
+            let storageEntry = null;
+            for (const widget of widgetArray) {
+              const entry = storageLookup?.[widget.id];
+              if (entry !== undefined) {
+                storageEntry = entry;
+                break;
+              }
+            }
+            if (storageEntry) {
+              if (storageEntry.value !== undefined) value = storageEntry.value;
+              else if (storageEntry.valueAsString !== undefined) value = storageEntry.valueAsString;
+            }
+            try {
+              const ctor = field.constructor?.name;
+              // Prefer storage entry over static widget default
+              const entry = storageEntry || {};
+              const exportVal = widgetArray[0]?.exportValue || 'Yes';
+
+              if (ctor === 'PDFTextField') {
+                const v = entry.valueAsString ?? entry.value ?? value ?? '';
+                field.setText(v != null ? String(v) : '');
+              } else if (ctor === 'PDFCheckBox') {
+                // pdf.js may store {checked:true}, {value:true}, or {valueAsString:'Yes'|'Off'}
+                const vStr = entry.valueAsString ?? (typeof entry.value === 'string' ? entry.value : null);
+                const isOn =
+                  entry.checked === true ||
+                  entry.value === true ||
+                  vStr === exportVal || vStr === 'Yes' || vStr === 'On' ||
+                  value === true || value === exportVal || value === 'Yes' || value === 'On';
+                if (isOn) field.check(); else field.uncheck();
+              } else if (ctor === 'PDFRadioGroup') {
+                const v = entry.valueAsString ?? entry.value ?? value ?? widgetArray[0]?.value;
+                if (typeof v === 'string') field.select(v);
+              } else if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') {
+                // May be a string, or an array for multi-select
+                const v = entry.value ?? entry.valueAsString ?? value;
+                if (Array.isArray(v)) {
+                  field.select(...v.map(x => String(x)));
+                } else if (v != null) {
+                  field.select(String(v));
+                }
+              } else if (typeof field.setText === 'function') {
+                const v = entry.valueAsString ?? entry.value ?? value;
+                if (v != null) field.setText(String(v));
+              }
+            } catch (err) {
+               console.warn('Failed to apply form value for field', name, err);
+            }
+          }
+        }
+
+        await applyFormValues(doc);
 
         // Process deleted PDF threads
         const uniqueDeletes = new Map();
@@ -1012,55 +1371,57 @@ function goToPageNumber(n){
               const img = await doc.embedPng(a.dataUrl);
               const w = a.w || 200, h = a.h || 80;
               page.drawImage(img, { x: a.x, y: ph - a.y - h, width: w, height: h });
-                        } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
+            } else if (a.type === 'highlight' && Array.isArray(a.rects)) {
+              for (const rect of a.rects) {
+                const w = rect.w || 0;
+                const h = rect.h || 0;
+                if (w <= 0 || h <= 0) continue;
+                const y = ph - rect.y - h;
+                page.drawRectangle({
+                  x: rect.x,
+                  y,
+                  width: w,
+                  height: h,
+                  color: PDFLib.rgb(1, 0.94, 0.46),
+                  opacity: 0.35,
+                  borderOpacity: 0
+                });
+              }
+            } else if (a.type === 'strike' && Array.isArray(a.rects)) {
+              for (const rect of a.rects) {
+                const w = rect.w || 0;
+                const h = rect.h || 0;
+                if (w <= 0) continue;
+                const y = ph - rect.y - (h / 2);
+                page.drawLine({
+                  start: { x: rect.x, y },
+                  end: { x: rect.x + w, y },
+                  thickness: 2,
+                  color: PDFLib.rgb(0.86, 0.15, 0.15)
+                });
+              }
+            } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
               const rootY = ph - a.y - 24;
               let rootRef = null;
-
-              // Helper: find nearest existing Text annotation to use as IRT
-function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
-          try {
-            const N = PDFLib.PDFName;
-            const arr = annotsArray.asArray ? annotsArray.asArray() : (annotsArray.array || []);
-            let bestRef = null, bestD2 = 1e12;
-            for (const ref of arr) {
-              const dict = doc.context.lookup(ref);
-              if (!dict || String(dict.get(N.of('Subtype'))) !== '/Text') continue;
-              const rect = dict.get(N.of('Rect'));
-              if (!rect || !rect.asArray) continue;
-              const nums = rect.asArray().map(n =>
-               n?.number !== undefined ? n.number : (n?.asNumber ? n.asNumber() : Number(n))
-              );
-              const [x1,y1,x2,y2] = nums;
-              const rx1 = Math.min(x1, x2);
-              const ry2 = Math.max(y1, y2);
-              // x is a.x (which is x1 from import)
-              // y is ph - a.y (which is y2 from import)
-              const dx = rx1 - x, dy = ry2 - y;
-              if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) { // Use tight tolerance
-                const d2 = dx*dx + dy*dy;
-                if (d2 < bestD2) { bestD2 = d2; bestRef = ref; }
-              }
-            }
-            return bestRef;
-          } catch { return null; }
-        }
 
               const annotsArray = getAnnotsArray(page); // ensure we have an Annots array
 
               if (a.origin === 'pdf') {
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, a.x, rootY) || null;
                 if (!rootRef) {
-                  // Fallback: create a new root if we couldn't find the original
-                  const root0 = a.thread[0] || { text:'', author:userName || 'User' };
-                  rootRef = addTextAnnot(page, a.x, rootY, 24, 24,
-                                         String(root0.text||''), String(root0.author||''));
+                  console.warn('Skipping reply export for comment without original thread', {
+                    page: a.page,
+                    x: a.x,
+                    y: rootY
+                  });
+                  continue;
                 }
-                const start = Math.max((a._importedCount|0), 1); // replies user added
+                const start = Math.max((a._importedCount | 0), 1); // replies user added
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
                   addReplyAnnot(page, rootRef,
-                    a.x + 6*i, rootY - 6*i, 24, 24,
-                    String(r.text||''), String(r.author || userName || 'User'));
+                    a.x + 6 * i, rootY - 6 * i, 24, 24,
+                    String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
                 // Normal user-created thread: create root + all replies
@@ -1083,6 +1444,7 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         const stable = bytes.slice();
 
         pdfBytes = stable;
+        originalPdfBytes = stable.slice();
 
         const blob = new Blob([stable], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
@@ -1162,12 +1524,19 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       });
     }
 
-    searchInput.addEventListener('keydown', (e) => {
+    searchInput.addEventListener('keydown', async (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        performSearch();
+        const query = (searchInput.value || '').trim().toLowerCase();
+        if (!searchDirty && query && query === lastSearchQuery && searchResults.length) {
+          currentMatchIndex = (currentMatchIndex + 1) % searchResults.length;
+          updateActiveHighlight();
+        } else {
+          await performSearch();
+        }
+      } else if (e.key === 'Escape') {
+        clearSearch();
       }
-      if (e.key === 'Escape') clearSearch();
     });
 
     searchNextBtn.onclick = () => {
@@ -1239,6 +1608,97 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       });
     }
 
+    function resolvePageElement(range, rect) {
+      const midX = rect.left + rect.width / 2;
+      const midY = rect.top + rect.height / 2;
+      let elAtPoint = document.elementFromPoint(midX, midY);
+      if (elAtPoint?.closest) {
+        const page = elAtPoint.closest('.page');
+        if (page) return page;
+      }
+      const container = range.commonAncestorContainer;
+      if (container instanceof Element && container.closest) {
+        const page = container.closest('.page');
+        if (page) return page;
+      }
+      if (container?.parentElement?.closest) {
+        return container.parentElement.closest('.page');
+      }
+      return null;
+    }
+
+    function collectSelectionRects() {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return null;
+      const map = new Map();
+      for (let i = 0; i < selection.rangeCount; i++) {
+        const range = selection.getRangeAt(i);
+        const clientRects = range.getClientRects();
+        for (const rect of clientRects) {
+          if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+          const pageEl = resolvePageElement(range, rect);
+          if (!pageEl) continue;
+          const pageNum = parseInt(pageEl.dataset.page, 10);
+          if (!Number.isFinite(pageNum)) continue;
+          const pageRect = pageEl.getBoundingClientRect();
+          const x = (rect.left - pageRect.left) / currentScale;
+          const y = (rect.top - pageRect.top) / currentScale;
+          const w = rect.width / currentScale;
+          const h = rect.height / currentScale;
+          if (w <= 0 || h <= 0) continue;
+          const list = map.get(pageNum) || [];
+          list.push({ x, y, w, h });
+          map.set(pageNum, list);
+        }
+      }
+      return map.size ? map : null;
+    }
+
+    function applyMarkupFromSelection(type) {
+      if (!pdfDoc) return false;
+      const rectMap = collectSelectionRects();
+      if (!rectMap) return false;
+      let createdEl = null;
+      for (const [pageNum, rects] of rectMap.entries()) {
+        if (!rects.length) continue;
+        const key = String(pageNum);
+        const slot = ensurePageSlot(pageNum);
+        const canvasW = slot?.canvas?.width ? slot.canvas.width / (dpr || 1) : 0;
+        const canvasH = slot?.canvas?.height ? slot.canvas.height / (dpr || 1) : 0;
+        const maxW = slot?.baseW || canvasW || mainEl.clientWidth || 0;
+        const maxH = slot?.baseH || canvasH || mainEl.clientHeight || 0;
+        const normalized = [];
+        for (const r of rects) {
+          const x = clamp(r.x, 0, maxW);
+          const y = clamp(r.y, 0, maxH);
+          const maxWidth = Math.max(0, maxW - x);
+          const maxHeight = Math.max(0, maxH - y);
+          if (maxWidth <= 0 || maxHeight <= 0) continue;
+          const w = clamp(r.w, 0.1, maxWidth);
+          const h = clamp(r.h, 0.1, maxHeight);
+          normalized.push({ x, y, w, h });
+        }
+        if (!normalized.length) continue;
+        const anno = {
+          id: nextAnnoId++,
+          type,
+          page: pageNum,
+          rects: normalized
+        };
+        if (!annotations[key]) annotations[key] = [];
+        annotations[key].push(anno);
+        const el = addAnnotationElement(slot.layer, pageNum, anno, { addToState: false });
+        if (el) createdEl = el;
+      }
+      const selection = window.getSelection();
+      if (selection) selection.removeAllRanges();
+      if (createdEl) {
+        setSelectedAnnotation(createdEl);
+        return true;
+      }
+      return false;
+    }
+
     function addAnnotationElement(layer, pageNum, anno, opts) {
       const { addToState = false, focus = false } = opts || {};
       const key = String(pageNum);
@@ -1302,7 +1762,9 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
           div.focus();
           showTextToolbar(div, anno);
         }
+        return div;
       } else if (anno.type === 'comment') {
+        normalizeCommentAnnotation(anno);
         const pin = document.createElement('button');
         pin.type = 'button';
         pin.className = 'comment-pin';
@@ -1320,6 +1782,7 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         pin.style.left = (anno.x - pinHalf) + 'px';
         pin.style.top = (anno.y - pinHalf) + 'px';
         makeDraggable(pin, anno, layer, true);
+        return pin;
       } else if (anno.type === 'signature') {
         const box = document.createElement('div');
         box.className = 'sig-anno';
@@ -1353,7 +1816,47 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         makeResizable(box, handle, anno);
 
         layer.appendChild(box);
+        return box;
+      } else if (anno.type === 'highlight' || anno.type === 'strike') {
+        const rects = Array.isArray(anno.rects) ? anno.rects : [];
+        if (!rects.length) return null;
+        const slot = pages[pageNum - 1] || ensurePageSlot(pageNum);
+        const group = document.createElement('div');
+        group.className = `markup-anno ${anno.type}-group`;
+        group.dataset.id = anno.id;
+        group.dataset.page = key;
+        group._anno = anno;
+        const canvasW = slot?.canvas?.width ? slot.canvas.width / (dpr || 1) : 0;
+        const canvasH = slot?.canvas?.height ? slot.canvas.height / (dpr || 1) : 0;
+        const baseW = slot?.baseW || canvasW || layer.offsetWidth || 0;
+        const baseH = slot?.baseH || canvasH || layer.offsetHeight || 0;
+        group.style.left = '0';
+        group.style.top = '0';
+        group.style.width = `${baseW}px`;
+        group.style.height = `${baseH}px`;
+        rects.forEach((rect, idx) => {
+          const seg = document.createElement('div');
+          seg.className = anno.type === 'highlight' ? 'highlight-anno' : 'strike-anno';
+          seg.style.position = 'absolute';
+          seg.style.left = `${rect.x}px`;
+          seg.style.top = `${rect.y}px`;
+          seg.style.width = `${rect.w}px`;
+          seg.style.height = `${rect.h}px`;
+          seg.dataset.segment = String(idx);
+          seg.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            setSelectedAnnotation(group);
+          });
+          group.appendChild(seg);
+        });
+        group.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          setSelectedAnnotation(group);
+        });
+        layer.appendChild(group);
+        return group;
       }
+      return null;
     }
 
     function removeAnnotationFromState(anno) {
@@ -1482,30 +1985,68 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       if (selectedAnnoEl) setSelectedAnnotation(null);
     });
 
+    function normalizeCommentAnnotation(anno) {
+      if (!anno) return anno;
+      if (!Array.isArray(anno.thread)) anno.thread = [];
+      const normalized = [];
+      let importedCount = 0;
+      for (let idx = 0; idx < anno.thread.length; idx++) {
+        const entry = anno.thread[idx];
+        if (!entry) continue;
+        const text = String(entry.text || '').trim();
+        if (!text) continue;
+        const author = entry.author || (idx === 0 ? (anno.author || userName || 'User') : userName || 'User');
+        const time = entry.time || entry.date || entry.createdAt || entry.modified || '';
+        const imported = !!entry.imported || (anno.origin === 'pdf' && idx < (anno._importedCount || anno.thread.length));
+        if (imported) importedCount++;
+        normalized.push({ author, text, time, imported });
+      }
+      anno.thread = normalized;
+      anno._importedCount = importedCount;
+      if (!anno.origin) {
+        anno.origin = importedCount ? 'pdf' : 'user';
+      } else if (anno.origin === 'pdf' && importedCount === 0) {
+        anno.origin = 'user';
+      }
+      return anno;
+    }
+
+    function renderCommentThread(anno) {
+      if (!cs.thread) return;
+      cs.thread.innerHTML = '';
+      const thread = Array.isArray(anno.thread) ? anno.thread : [];
+      thread.forEach((c, idx) => {
+        const item = document.createElement('div');
+        item.className = 'cs-item' + (idx > 0 ? ' reply' : '');
+        item.innerHTML =
+          `<div class="cs-author">${escapeHtml(c.author || 'User')}</div>
+           <div class="cs-text">${escapeHtml(c.text || '')}</div>
+           <div class="cs-time">${escapeHtml(c.time || '')}</div>`;
+        const del = document.createElement('button');
+        del.className = 'mini-btn cs-del';
+        del.title = 'Delete';
+        del.dataset.index = String(idx);
+        del.textContent = '×';
+        if (c.imported && idx === 0 && anno.origin === 'pdf') {
+          del.setAttribute('aria-label', 'Delete imported comment');
+        }
+        item.prepend(del);
+        cs.thread.appendChild(item);
+      });
+      if (cs.thread.scrollHeight) {
+        cs.thread.scrollTop = cs.thread.scrollHeight;
+      }
+    }
+
     function openCommentUI(pageNum, anno) {
-      openCommentTarget = { pageNum, anno };
+      const normalized = normalizeCommentAnnotation(anno);
+      openCommentTarget = { pageNum, anno: normalized };
 
       cs.panel.classList.add('open');
-      cs.thread.innerHTML = '';
       updateIdentityDisplay();
+      renderCommentThread(normalized);
 
-      if (anno.thread && anno.thread.length) {
-        anno.thread.forEach((c, idx) => {
-          const div = document.createElement('div');
-          div.className = 'cs-item' + (idx > 0 ? ' reply' : '');
-          div.innerHTML =
-            `<div class="cs-author">${c.author || 'User'}</div>
-             <div class="cs-text">${(c.text || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
-             <div class="cs-time">${c.time || ''}</div>`;
-          const del = document.createElement('button');
-          del.className = 'mini-btn cs-del';
-          del.title = 'Delete';
-          del.dataset.index = String(idx);
-          del.textContent = '×';
-          div.prepend(del);
-          cs.thread.appendChild(div);
-        });
-        cs.thread.scrollTop = cs.thread.scrollHeight;
+      if (normalized.thread && normalized.thread.length) {
         cs.text.placeholder = 'Write a reply...';
         cs.post.textContent = 'Reply';
       } else {
@@ -1546,15 +2087,17 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
         }
     
         anno.thread.splice(i, 1);
-        
+
         // If it was an imported thread and we modified it, convert to a 'user' thread
         // This ensures it gets fully re-written on save, not just appended to
         if (anno.origin === 'pdf') {
           anno.origin = 'user'; // Convert to a user thread
           anno._importedCount = 0; // It will now be saved from scratch
         }
-    
-        if (anno.thread.length === 0) {
+
+        normalizeCommentAnnotation(anno);
+
+        if (!anno.thread.length) {
           const pinEl = pagesEl.querySelector(`.comment-pin[data-id="${anno.id}"]`);
           if (pinEl) removeAnnotationElement(pinEl, anno); // This also adds to deletedPdfThreads
           closeCommentUI();
@@ -1594,32 +2137,43 @@ function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
       closeCommentUI();
     }, true);
 
+    async function computeWidthScale(fraction = 1) {
+      if (!pdfDoc) return currentScale;
+      const page = await pdfDoc.getPage(1);
+      const vp = page.getViewport({ scale: 1 });
+      const { width: containerWidth } = getMainContentSize();
+      const target = containerWidth * fraction;
+      if (target <= 0 || vp.width <= 0) return null;
+      return clamp(target / vp.width, MIN_SCALE, MAX_SCALE);
+    }
+
     function setScale(s) {
-      currentScale = s;
+      currentScale = clamp(s, MIN_SCALE, MAX_SCALE);
       renderAll();
     }
 
     zoomInBtn.onclick = () => {
-      const i = snapIndexFromScale(currentScale);
-      setScale(ZOOMS[clamp(i + 1, 0, ZOOMS.length - 1)]);
+      const base = getBaseScale();
+      const ratio = getRelativeScale();
+      const i = snapIndexFromRelative(ratio);
+      const next = ZOOM_STEPS[clamp(i + 1, 0, ZOOM_STEPS.length - 1)];
+      setScale(base * next);
     };
     zoomOutBtn.onclick = () => {
-      const i = snapIndexFromScale(currentScale);
-      setScale(ZOOMS[clamp(i - 1, 0, ZOOMS.length - 1)]);
+      const base = getBaseScale();
+      const ratio = getRelativeScale();
+      const i = snapIndexFromRelative(ratio);
+      const next = ZOOM_STEPS[clamp(i - 1, 0, ZOOM_STEPS.length - 1)];
+      setScale(base * next);
     };
 
-function fitToAvailableWidth() {
+async function fitToAvailableWidth(fraction = 1) {
   if (!pdfDoc) return;
-  pdfDoc.getPage(1).then(p => {
-    const vp = p.getViewport({ scale: 1 });
-    // Use the real inner width of the scrolling area, not window width.
-    const { width: target } = getMainContentSize(); // already defined in your code
-    if (target <= 0) return;
-    const s = clamp(target / vp.width, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
-    setScale(s);
-  });
+  const scale = await computeWidthScale(fraction);
+  if (!Number.isFinite(scale)) return;
+  setScale(scale);
 }
-fitWidthBtn.onclick = fitToAvailableWidth;
+fitWidthBtn.onclick = () => fitToAvailableWidth();
 
     function applyReaderLayout() {
       document.body.classList.toggle('reader', readerMode);
@@ -1641,6 +2195,99 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       if (wrap) wrap.style.display = 'block';
     }
 
+    async function requestReaderFullscreen() {
+      let lastError = null;
+      const tryRequest = async (target) => {
+        if (!target) return false;
+        const methods = [
+          target.requestFullscreen,
+          target.webkitRequestFullscreen,
+          target.webkitRequestFullScreen,
+          target.mozRequestFullScreen,
+          target.msRequestFullscreen
+        ];
+        for (const fn of methods) {
+          if (typeof fn !== 'function') continue;
+          try {
+            const result = fn.call(target, { navigationUI: 'hide' });
+            if (result && typeof result.then === 'function') {
+              await result;
+            }
+            return true;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        return false;
+      };
+
+      const targets = [document.documentElement, document.body];
+      for (const target of targets) {
+        if (await tryRequest(target)) {
+          return true;
+        }
+      }
+
+      if (window.self !== window.top) {
+        try {
+          const parentDoc = window.parent?.document;
+          if (parentDoc) {
+            const parentTargets = [parentDoc.documentElement, parentDoc.body];
+            for (const target of parentTargets) {
+              if (await tryRequest(target)) {
+                return true;
+              }
+            }
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      if (lastError) {
+        console.warn('Fullscreen request failed:', lastError);
+      }
+      return false;
+    }
+
+    async function exitReaderFullscreen() {
+      const tryExit = async (doc) => {
+        if (!doc) return false;
+        if (doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement) {
+          const methods = [
+            doc.exitFullscreen,
+            doc.webkitExitFullscreen,
+            doc.webkitCancelFullScreen,
+            doc.mozCancelFullScreen,
+            doc.msExitFullscreen
+          ];
+          for (const fn of methods) {
+            if (typeof fn !== 'function') continue;
+            try {
+              const result = fn.call(doc);
+              if (result && typeof result.then === 'function') {
+                await result;
+              }
+              return true;
+            } catch (err) {
+              console.warn('Exit fullscreen failed:', err);
+            }
+          }
+        }
+        return false;
+      };
+
+      if (await tryExit(document)) {
+        return true;
+      }
+
+      if (await tryExit(window.parent?.document)) {
+        return true;
+      }
+
+      return false;
+    }
+
     async function toggleReader() {
       if (!pdfDoc) return;
 
@@ -1649,49 +2296,28 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       if (entering) {
         readerPrevScale = currentScale;
         readerMode = true;
-        currentScale = await computeReaderFitScale();
+        const fullscreenPromise = requestReaderFullscreen();
+        const nextScale = await computeReaderFitScale();
+        currentScale = nextScale;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-        
-        // Request fullscreen - try both iframe and top-level document
-        if (document.fullscreenEnabled) {
-          try {
-            // First try to fullscreen the entire document (works when in iframe with allow="fullscreen")
-            await document.documentElement.requestFullscreen();
-          } catch (err) {
-            // If that fails, try parent window (if we're in an iframe)
-            if (window.self !== window.top && window.parent?.document?.documentElement?.requestFullscreen) {
-              try {
-                await window.parent.document.documentElement.requestFullscreen();
-              } catch (e) {
-                console.warn('Fullscreen not available:', e);
-              }
-            } else {
-              console.warn('Fullscreen request denied:', err);
-            }
-          }
+        try {
+          await fullscreenPromise;
+        } catch (err) {
+          console.warn('Fullscreen request failed:', err);
         }
       } else {
         readerMode = false;
+        const exitPromise = exitReaderFullscreen();
         currentScale = readerPrevScale || currentScale;
         await renderAll();
         mainEl.scrollTop = 0;
         mainEl.scrollLeft = 0;
-        
-        // Exit fullscreen
-        if (document.fullscreenElement) {
-          try {
-            await document.exitFullscreen();
-          } catch (err) {
-            console.warn('Exit fullscreen failed:', err);
-          }
-        } else if (window.parent?.document?.fullscreenElement) {
-          try {
-            await window.parent.document.exitFullscreen();
-          } catch (err) {
-            console.warn('Exit parent fullscreen failed:', err);
-          }
+        try {
+          await exitPromise;
+        } catch (err) {
+          console.warn('Exit fullscreen failed:', err);
         }
       }
       updateToolbarStates();
@@ -1734,6 +2360,15 @@ fitWidthBtn.onclick = fitToAvailableWidth;
       const tag = e.target.tagName;
       const editing = e.target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        if (searchInput) {
+          e.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+
       if (e.key === 'Delete' && !editing && selectedAnnoEl) {
         const anno = selectedAnnoEl._anno;
         if (anno) {
@@ -1763,9 +2398,21 @@ fitWidthBtn.onclick = fitToAvailableWidth;
     e.preventDefault();
     signatureTool.click();
   }
-  if (!editing && (e.key === 'c' || e.key === 'C')) {
+  if (!editing && commentTool && (e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
     commentTool.click();
+  }
+  if (!editing && (e.key === 'h' || e.key === 'H')) {
+    if (applyMarkupFromSelection('highlight')) {
+      e.preventDefault();
+      return;
+    }
+  }
+  if (!editing && (e.key === 'x' || e.key === 'X')) {
+    if (applyMarkupFromSelection('strike')) {
+      e.preventDefault();
+      return;
+    }
   }
   if (!editing && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
@@ -1774,14 +2421,18 @@ fitWidthBtn.onclick = fitToAvailableWidth;
   if (!editing && (e.key === 'p' || e.key === 'P')) {
     e.preventDefault();
     if (pdfDoc) {
-      prepareForPrint().then(() => window.print());
+      prepareForPrint().then(() => {
+        document.body.classList.add('print-ready');
+        window.print();
+      });
     }
   }
 
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !editing) {
         e.preventDefault();
         const d = e.key === 'ArrowUp' ? -120 : 120;
-        mainEl.scrollBy({ top: d, behavior: 'smooth' });
+        const behavior = e.repeat ? 'auto' : 'smooth';
+        mainEl.scrollBy({ top: d, behavior });
         return;
       }
 
@@ -1802,9 +2453,6 @@ fitWidthBtn.onclick = fitToAvailableWidth;
           goToPage(1);
         }
       } else {
-        if (!editing && (e.key === 't' || e.key === 'T') && textTool) textTool.click();
-        if (!editing && (e.key === 'm' || e.key === 'M') && commentTool) commentTool.click();
-        if (!editing && (e.key === 's' || e.key === 'S') && signatureTool) signatureTool.click();
         if (!editing && e.key === 'ArrowLeft') {
           e.preventDefault();
           goToPage(-1);
@@ -1884,12 +2532,15 @@ document.querySelectorAll('.menu-item').forEach(item => {
 
 /* ===== Find UI: show up/down + count only when there is input ===== */
 const searchContainer = document.querySelector('.search-container');
-function updateSearchUIState() {
+function updateSearchUIState(markDirty = false) {
   const has = (searchInput.value || '').trim().length > 0;
   searchContainer.classList.toggle('has-query', has);
+  if (markDirty) {
+    searchDirty = true;
+  }
 }
-searchInput.addEventListener('input', updateSearchUIState);
-updateSearchUIState();
+searchInput.addEventListener('input', () => updateSearchUIState(true));
+updateSearchUIState(false);
 
 /* ===== Page / Zoom compact boxes ===== */
 const pageBox = document.getElementById('pageBox');
@@ -1912,7 +2563,11 @@ const zoomMenu = document.getElementById('zoomMenu');
         if (pageTotal) pageTotal.textContent = `/ ${pc}`;
       }
       
-      zoomBox && (zoomBox.textContent = `${Math.round(currentScale * 100)}%`);
+      if (zoomBox) {
+        const baseline = defaultWidthScale || 1;
+        const percent = Math.round((currentScale / baseline) * 100);
+        zoomBox.textContent = `${percent}%`;
+      }
     }
     function updatePageInfo() { syncInfoBoxes(); }
     syncInfoBoxes();
@@ -2017,75 +2672,6 @@ const _origGoToPageNumber = goToPageNumber;
 goToPageNumber = function (n) { _origGoToPageNumber(n); syncInfoBoxes(); };
 const _origGoToPage = goToPage;
 goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
-
-/* ===== Hamburger: rebuild with only requested items & order ===== */
-(function rebuildHamburger() {
-  const mc = document.querySelector('.menu-content');
-  if (!mc) return;
-  mc.innerHTML = `
-    <button class="menu-item help-top" id="helpBtn" title="Help">
-      Help
-    </button>
-    <button class="menu-item" id="identityBtn" title="Identity">
-      Change Name/Signature
-    </button>
-    <button class="menu-item" id="printBtn" title="Print (P)">
-      Print (p)
-    </button>
-    <hr class="menu-divider" style="opacity:.0">
-    <button class="menu-item" id="selectTextTool" title="Select text (T)">
-      Select (t)
-    </button>
-    <button class="menu-item" id="textTool" title="Annotate text (A)">
-      Annotate (a)
-    </button>
-    <button class="menu-item" id="commentTool" title="Add comment (C)">
-      Add Comment (c)
-    </button>
-    <button class="menu-item" id="signatureTool" title="Add signature (S)">
-      Add Signature (s)
-    </button>
-  `;
-
-   (function rebind() {
-      const byId = (x) => document.getElementById(x);
-      // Help modal
-      byId('helpBtn')?.addEventListener('click', () => {
-        byId('helpModal')?.classList.remove('hidden');
-        closeHamburger();
-      });
-      // Identity modal
-      byId('identityBtn')?.addEventListener('click', () => {
-        openIdentityModal();
-        closeHamburger();
-      });
-      // Print button - prepare all pages then print
-      byId('printBtn')?.addEventListener('click', async () => {
-        closeHamburger();
-        if (!pdfDoc) return;
-        await prepareForPrint();
-        window.print();
-      });
-      // Tools
-      byId('selectTextTool')?.addEventListener('click', () => {
-        setTool(currentTool === 'selectText' ? 'select' : 'selectText');
-        closeHamburger(); // ADDED
-      });
-      byId('textTool')?.addEventListener('click', () => {
-        setTool('textOnce');
-        closeHamburger(); // ADDED
-      });
-      byId('commentTool')?.addEventListener('click', () => {
-        if (!userName) openIdentityModal(); else setTool('commentOnce');
-        closeHamburger(); // ADDED
-      });
-      byId('signatureTool')?.addEventListener('click', () => {
-        if (!signatureDataUrl) openIdentityModal(); else setTool('signatureOnce');
-        closeHamburger(); // ADDED
-      });
-    })();
-})();
-
 
     textFontFamily.addEventListener('change', () => {
       if (!textToolbarTarget || !textToolbarAnno) return;
@@ -2251,78 +2837,166 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       }
     })();
 
-// Force render all pages before printing
+// Prepare a print-only rendering of the document
     let printPrepared = false;
-    
-    async function prepareForPrint() {
-      if (!pdfDoc || printPrepared) return;
-      printPrepared = true;
-      
-      // Cancel all ongoing render tasks
-      cancelAllPageRenders();
-      
-      // Disable reader mode temporarily
-      const wasInReader = readerMode;
-      if (readerMode) {
-        readerMode = false;
-      }
-      
-      // Ensure all page slots exist and show them
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const slot = ensurePageSlot(i);
-        const wrap = slot.canvas.parentElement;
-        if (wrap) wrap.style.display = 'block';
-      }
-      
-      // Force render all pages
-      const promises = [];
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        promises.push(renderPage(i).catch(e => console.warn('Print render failed for page', i, e)));
-      }
-      await Promise.all(promises);
-      
-      // Restore reader mode flag (layout will be fixed after print)
-      if (wasInReader) {
-        readerMode = true;
+    let printInFlight = null;
+
+    function renderAnnotationsForPrint(layer, pageNum) {
+      const list = annotations[String(pageNum)] || [];
+      if (!list.length) return;
+      for (const anno of list) {
+        if (anno.type === 'comment') continue;
+        if (anno.type === 'text') {
+          const styles = anno.styles || {};
+          const div = document.createElement('div');
+          div.className = 'print-text';
+          div.style.left = `${anno.x}px`;
+          div.style.top = `${anno.y}px`;
+          const w = Math.max(60, anno.boxWpt || 200);
+          div.style.width = `${w}px`;
+          div.style.whiteSpace = 'pre-wrap';
+          div.style.fontFamily = styles.fontFamily || 'Helvetica';
+          div.style.fontWeight = styles.fontWeight || 'normal';
+          div.style.fontStyle = styles.fontStyle || 'normal';
+          const fs = parseInt(styles.fontSize, 10) || 12;
+          div.style.fontSize = `${fs}px`;
+          div.style.color = styles.color || '#000';
+          div.textContent = anno.content || '';
+          layer.appendChild(div);
+        } else if (anno.type === 'signature') {
+          const box = document.createElement('div');
+          box.className = 'print-signature';
+          box.style.left = `${anno.x}px`;
+          box.style.top = `${anno.y}px`;
+          const w = parseFloat(anno.w) || 200;
+          const h = parseFloat(anno.h) || 80;
+          box.style.width = `${w}px`;
+          box.style.height = `${h}px`;
+          const img = document.createElement('img');
+          img.src = anno.dataUrl;
+          img.alt = 'Signature';
+          img.draggable = false;
+          box.appendChild(img);
+          layer.appendChild(box);
+        } else if (anno.type === 'highlight') {
+          const rects = Array.isArray(anno.rects) ? anno.rects : [];
+          rects.forEach(rect => {
+            const hl = document.createElement('div');
+            hl.style.position = 'absolute';
+            hl.style.left = `${rect.x}px`;
+            hl.style.top = `${rect.y}px`;
+            hl.style.width = `${rect.w}px`;
+            hl.style.height = `${rect.h}px`;
+            hl.style.background = 'rgba(255, 241, 118, 0.5)';
+            layer.appendChild(hl);
+          });
+        } else if (anno.type === 'strike') {
+          const rects = Array.isArray(anno.rects) ? anno.rects : [];
+          rects.forEach(rect => {
+            const box = document.createElement('div');
+            box.style.position = 'absolute';
+            box.style.left = `${rect.x}px`;
+            box.style.top = `${rect.y}px`;
+            box.style.width = `${rect.w}px`;
+            box.style.height = `${rect.h}px`;
+            const line = document.createElement('div');
+            line.style.position = 'absolute';
+            line.style.left = '0';
+            line.style.right = '0';
+            line.style.top = '50%';
+            line.style.borderTop = '3px solid rgba(220, 38, 38, 0.85)';
+            line.style.transform = 'translateY(-50%)';
+            box.appendChild(line);
+            layer.appendChild(box);
+          });
+        }
       }
     }
-    
+
+    async function renderPrintPage(pageNum) {
+      const page = await pdfDoc.getPage(pageNum);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const printViewport = page.getViewport({ scale: PRINT_UNITS });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      canvas.width = Math.floor(printViewport.width);
+      canvas.height = Math.floor(printViewport.height);
+      canvas.style.width = `${baseViewport.width}px`;
+      canvas.style.height = `${baseViewport.height}px`;
+      const renderTask = page.render({ canvasContext: ctx, viewport: printViewport });
+      await renderTask.promise;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'print-page';
+      wrapper.dataset.page = String(pageNum);
+      wrapper.style.width = `${baseViewport.width}px`;
+      wrapper.style.height = `${baseViewport.height}px`;
+      wrapper.appendChild(canvas);
+      const layer = document.createElement('div');
+      layer.className = 'print-layer';
+      layer.style.width = `${baseViewport.width}px`;
+      layer.style.height = `${baseViewport.height}px`;
+      renderAnnotationsForPrint(layer, pageNum);
+      wrapper.appendChild(layer);
+      printContainer?.appendChild(wrapper);
+    }
+
+    async function prepareForPrint() {
+      if (!pdfDoc || !printContainer) return;
+      if (printPrepared) return;
+      if (printInFlight) {
+        await printInFlight;
+        return;
+      }
+      printInFlight = (async () => {
+        printContainer.innerHTML = '';
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          await renderPrintPage(i);
+        }
+        printPrepared = true;
+      })();
+      try {
+        await printInFlight;
+      } finally {
+        printInFlight = null;
+      }
+    }
+
     window.addEventListener('beforeprint', () => {
       if (!pdfDoc) return;
-      
-      // Show all pages immediately (even if not rendered)
-      pagesEl.querySelectorAll('.page').forEach(w => {
-        w.style.display = 'block';
-      });
-      
-      // Try to render if not already prepared
-      if (!printPrepared) {
-        prepareForPrint();
-      }
+      document.body.classList.add('print-ready');
+      prepareForPrint().catch(err => console.error('Print preparation failed:', err));
     });
-    
+
     window.addEventListener('afterprint', () => {
       printPrepared = false;
-      // After printing, reapply reader layout if needed
-      if (readerMode) {
-        applyReaderLayout();
-      } else {
-        // Re-apply windowing
-        renderWindowAroundCurrent();
-      }
+      if (printContainer) printContainer.innerHTML = '';
+      document.body.classList.remove('print-ready');
     });
 
     window.addEventListener('resize', () => {
       dpr = window.devicePixelRatio || 1;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(async () => {
-        if (readerMode && pdfDoc) {
+        if (!pdfDoc) return;
+
+        const prevBase = defaultWidthScale;
+        const newBase = await computeWidthScale(DEFAULT_WIDTH_FRACTION);
+        if (Number.isFinite(newBase)) {
+          const atDefault = !readerMode && Math.abs(currentScale - prevBase) < 0.01;
+          defaultWidthScale = newBase;
+          if (atDefault) {
+            currentScale = newBase;
+          }
+        }
+
+        if (readerMode) {
           currentScale = await computeReaderFitScale();
           await renderAll();
           updatePageInfo();
           updateToolbarStates();
-        } else if (pdfDoc) {
+        } else {
           await renderAll();
+          updatePageInfo();
         }
       }, 120);
     });

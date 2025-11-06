@@ -42,10 +42,18 @@
         </style>
       </head>
       <body>
-        <iframe id="pdfViewer" src="${chrome.runtime.getURL('viewer.html')}"></iframe>
+        <iframe id="pdfViewer" src="${chrome.runtime.getURL('viewer.html') + '?src=' + encodeURIComponent(location.href)}" allow="fullscreen"></iframe>
       </body>
       </html>
     `);
     document.close();
+ // Forward Ctrl/Cmd+P to the viewer iframe so it can prepare pages before printing
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        document.getElementById('pdfViewer')
+          ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
+      }
+    }, true);
   }, 10);
 })();
