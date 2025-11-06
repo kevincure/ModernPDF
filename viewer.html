@@ -81,13 +81,36 @@
   .header {
     position: fixed;
     top: 2rem;
+    bottom: 2rem;
     left: 0;
     z-index: 50;
     padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     width: auto;
+    overflow-y: auto;
+  }
+
+  .header-top {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .header-bottom {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .button-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
   }
 
   .header.tool-mode {
@@ -114,7 +137,6 @@
     width: 100%;
   }
   
-  .hamburger-btn,
   .icon-btn,
   .nav-btn {
     padding: 6px 12px;
@@ -204,88 +226,6 @@
     background: #2563eb;
     color: #fff;
     border-color: #1d4ed8;
-  }
-
-  /* Hamburger Menu */
-  .hamburger-menu {
-    position: fixed;
-    top: 0;
-    left: -300px;
-    width: 300px;
-    height: 100vh;
-    background: var(--bg-color);
-    border-right: 1px solid var(--border-color);
-    z-index: 1000;
-    transition: left 0.3s ease;
-    overflow-y: auto;
-  }
-
-  .hamburger-menu.open {
-    left: 0;
-  }
-
-  .menu-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.3);
-    z-index: 999;
-    display: none;
-  }
-
-  .menu-overlay.visible {
-    display: block;
-  }
-
-  .menu-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .menu-header h2 {
-    font-size: 1.2rem;
-    font-weight: 500;
-  }
-
-  .menu-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 4px 8px;
-  }
-
-  .menu-content {
-    padding: 20px;
-  }
-
-  .menu-item {
-    width: 100%;
-    padding: 12px 16px;
-    background: none;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    text-align: left;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-    font-family: var(--font-sans);
-  }
-
-  .menu-item:hover {
-    background: #f0f0f0;
-  }
-
-  .menu-divider {
-    margin: 20px 0;
-    border: none;
-    border-top: 1px solid var(--border-color);
   }
 
   .app {
@@ -850,10 +790,6 @@
 }
 .zoom-menu button:hover { background: #f5f5f5; }
 
-.menu-item.help-top {
-  background: #111; color: #fff; border-color: #111; font-weight: 600;
-}
-
   .signature-modal {
     position: fixed;
     inset: 0;
@@ -1034,8 +970,6 @@
     body > #helpModal,
     body > #identityModal,
     body > #textStylePanel,
-    body > .hamburger-menu,
-    body > .menu-overlay,
     body > #zoomMenu,
     body > #loadErrorBanner {
       display: none !important;
@@ -1121,12 +1055,6 @@
 #printContainer {
   display: none;
 }
-
-.menu-item .icon-svg {
-  width: 1.1em;
-  height: 1.1em;
-  margin-right: 8px;
-}
 </style>
 </head>
 
@@ -1136,97 +1064,100 @@
     <button id="loadErrorCopy" type="button">Copy PDF link</button>
   </div>
   <div class="app">
-<div class="header" id="leftBar">
-  <button class="hamburger-btn" id="hamburgerBtn">☰</button>
-  <input id="file" type="file" accept="application/pdf"/>
-  <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled>
-    <img src="icons/download.svg" class="icon-svg">
-  </button>
+    <div class="header" id="leftBar">
+      <div class="header-top">
+        <input id="file" type="file" accept="application/pdf" />
 
-  <div class="toolbar-sep" aria-hidden="true"></div>
+        <div class="toolbar-sep" aria-hidden="true"></div>
 
-  <div class="search-container span-2">
-    <input type="text" id="searchInput" placeholder="Find..." />
-    <div class="search-controls">
-      <button class="nav-btn icon-btn" id="searchPrevBtn" title="Previous match" disabled>
-        <img src="icons/arrow-up.svg" class="icon-svg">
-      </button>
-      <span id="searchStatus" class="nav-info">0 / 0</span>
-      <button class="nav-btn icon-btn" id="searchNextBtn" title="Next match" disabled>
-        <img src="icons/arrow-down.svg" class="icon-svg">
-      </button>
+        <div class="button-stack" role="group" aria-label="Annotation tools">
+          <button class="nav-btn icon-btn" id="selectTextTool" title="Select text (T)" aria-label="Select text">
+            <img src="icons/i-cursor.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="textTool" title="Add text (A)" aria-label="Add text">
+            <img src="icons/font.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="signatureTool" title="Add signature (S)" aria-label="Add signature">
+            <img src="icons/pen-fancy.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="commentTool" title="Add comment (M)" aria-label="Add comment">
+            <img src="icons/comment-dots.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+        </div>
+
+        <div class="toolbar-sep" aria-hidden="true"></div>
+
+        <div class="button-stack" role="group" aria-label="View controls">
+          <button class="nav-btn icon-btn" id="zoomOutBtn" title="Zoom out (-)" aria-label="Zoom out">
+            <img src="icons/magnifying-glass-minus.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="zoomInBtn" title="Zoom in (+)" aria-label="Zoom in">
+            <img src="icons/magnifying-glass-plus.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="fitWidthBtn" title="Fit width (W)" aria-label="Fit width">
+            <img src="icons/left-right.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="toggleReaderBtn" title="Full screen (F)" aria-label="Toggle reader mode">
+            <img src="icons/maximize.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+        </div>
+
+        <div class="toolbar-sep" aria-hidden="true"></div>
+
+        <div class="button-stack" role="group" aria-label="Page navigation">
+          <button class="nav-btn icon-btn" id="prevPageBtn" title="Previous page" aria-label="Previous page">
+            <img src="icons/arrow-left.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+          <button class="nav-btn icon-btn" id="nextPageBtn" title="Next page" aria-label="Next page">
+            <img src="icons/arrow-right.svg" class="icon-svg" alt="" aria-hidden="true">
+          </button>
+        </div>
+
+        <div class="toolbar-sep" aria-hidden="true"></div>
+
+        <div class="search-container span-2">
+          <input type="text" id="searchInput" placeholder="Find..." />
+          <div class="search-controls">
+            <button class="nav-btn icon-btn" id="searchPrevBtn" title="Previous match" disabled aria-label="Previous match">
+              <img src="icons/arrow-up.svg" class="icon-svg" alt="" aria-hidden="true">
+            </button>
+            <span id="searchStatus" class="nav-info">0 / 0</span>
+            <button class="nav-btn icon-btn" id="searchNextBtn" title="Next match" disabled aria-label="Next match">
+              <img src="icons/arrow-down.svg" class="icon-svg" alt="" aria-hidden="true">
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar-sep" aria-hidden="true"></div>
+
+        <div id="infoGroup" class="info-group">
+          <button id="pageBox" class="info-box" title="Go to page">1 / 1</button>
+          <button id="zoomBox" class="info-box" title="Zoom options">100%</button>
+        </div>
+
+        <div id="modeIndicator" class="mode-indicator" aria-live="polite">Read Mode</div>
+      </div>
+
+      <div class="header-bottom">
+        <button class="nav-btn icon-btn" id="helpBtn" title="Help" aria-label="Help">
+          <img src="icons/question.svg" class="icon-svg" alt="" aria-hidden="true">
+        </button>
+        <button class="nav-btn icon-btn" id="identityBtn" title="Set name &amp; signature" aria-label="Set name and signature">
+          <img src="icons/user.svg" class="icon-svg" alt="" aria-hidden="true">
+        </button>
+        <button class="nav-btn icon-btn" id="saveBtn" title="Save PDF" disabled aria-label="Download PDF">
+          <img src="icons/download.svg" class="icon-svg" alt="" aria-hidden="true">
+        </button>
+      </div>
     </div>
-  </div>
 
-  <div class="toolbar-sep" aria-hidden="true"></div>
+    <div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
+      <button id="zmIn"><img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom in</button>
+      <button id="zmOut"><img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom out</button>
+      <button id="zmFit"><img src="icons/left-right.svg" class="icon-svg"> Fit width</button>
+      <button id="zmReader"><img src="icons/book-open-reader.svg" class="icon-svg">Reader mode</button>
+    </div>
 
-  <div id="infoGroup" class="info-group">
-    <button id="pageBox" class="info-box" title="Go to page">1 / 1</button>
-    <button id="zoomBox" class="info-box" title="Zoom options">100%</button>
-  </div>
-
-  <div id="modeIndicator" class="mode-indicator" aria-live="polite">Read Mode</div>
-</div>
-
-<div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
-  <button id="zmIn"><img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom in</button>
-  <button id="zmOut"><img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom out</button>
-  <button id="zmFit"><img src="icons/left-right.svg" class="icon-svg"> Fit width</button>
-  <button id="zmReader"><img src="icons/book-open-reader.svg" class="icon-svg">Reader mode</button>
-</div>
-
-<!-- Hamburger Menu -->
-<div class="hamburger-menu" id="hamburgerMenu">
-  <div class="menu-header">
-    <h2>Modern PDF</h2>
-    <button class="menu-close" id="menuClose">×</button>
-  </div>
-  <div class="menu-content">
-    <button class="menu-item" id="selectTextTool" title="Select text (T)">
-      <img src="icons/i-cursor.svg" class="icon-svg"> Select Text
-    </button>
-    <button class="menu-item" id="textTool" title="Add text (A)">
-      <img src="icons/font.svg" class="icon-svg"> Add Text
-    </button>
-    <button class="menu-item" id="signatureTool" title="Add signature (S)">
-      <img src="icons/pen-fancy.svg" class="icon-svg"> Add Signature
-    </button>
-    <button class="menu-item" id="commentTool" title="Add comment (M)">
-      <img src="icons/comment-dots.svg" class="icon-svg"> Add Comment (M)
-    </button>
-    
-    <hr class="menu-divider">
-    
-    <button class="menu-item" id="zoomOutBtn" title="Zoom out (-)">
-      <img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom Out (-)
-    </button>
-    <button class="menu-item" id="zoomInBtn" title="Zoom in (+)">
-      <img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom In (+)
-    </button>
-    <button class="menu-item" id="fitWidthBtn" title="Fit width (W)">
-      <img src="icons/left-right.svg" class="icon-svg"> Fit Width (w)
-    </button>
-    <button class="menu-item" id="toggleReaderBtn" title="Full screen (F)">
-      <img src="icons/maximize.svg" class="icon-svg"> Full Screen (f)
-    </button>
-    <button class="menu-item" id="prevPageBtn" title="Previous page">
-      <img src="icons/arrow-left.svg" class="icon-svg"> Previous Page
-    </button>
-    <button class="menu-item" id="nextPageBtn" title="Next page">
-      <img src="icons/arrow-right.svg" class="icon-svg"> Next Page
-    </button>
-    
-    <hr class="menu-divider">
-    
-    <button class="menu-item" id="identityBtn" title="Set name & signature">
-      <img src="icons/user.svg" class="icon-svg"> Set Identity
-    </button>
-    <button class="menu-item" id="helpBtn" title="Help">
-      <img src="icons/question.svg" class="icon-svg"> Help
-    </button>
-  </div>
-</div>
-<div class="menu-overlay" id="menuOverlay"></div>
     <div class="main" id="main" tabindex="-1">
       <div id="pages"></div>
     </div>

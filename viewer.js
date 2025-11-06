@@ -1461,7 +1461,6 @@ function goToPageNumber(n){
 
     if (identityBtn) {
       identityBtn.onclick = () => {
-        closeHamburger();
         openIdentityModal();
       };
     }
@@ -1516,7 +1515,7 @@ function goToPageNumber(n){
       setTool('select');
     }
 
-    if (helpBtn) helpBtn.onclick = () =>  { closeHamburger(); helpModal.classList.remove('hidden'); }
+    if (helpBtn) helpBtn.onclick = () =>  { helpModal.classList.remove('hidden'); }
     if (helpClose) helpClose.onclick = () => helpModal.classList.add('hidden');
     if (helpModal) {
       helpModal.addEventListener('click', (e) => {
@@ -2502,34 +2501,6 @@ fitWidthBtn.onclick = () => fitToAvailableWidth();
       textStylePanel.classList.add('hidden');
     }
 
-const hamburgerBtn = document.getElementById('hamburgerBtn');
-const hamburgerMenu = document.getElementById('hamburgerMenu');
-const menuClose = document.getElementById('menuClose');
-const menuOverlay = document.getElementById('menuOverlay');
-
-hamburgerBtn.addEventListener('click', () => {
-  hamburgerMenu.classList.add('open');
-  menuOverlay.classList.add('visible');
-});
-
-menuClose.addEventListener('click', () => {
-  hamburgerMenu.classList.remove('open');
-  menuOverlay.classList.remove('visible');
-});
-
-menuOverlay.addEventListener('click', () => {
-  hamburgerMenu.classList.remove('open');
-  menuOverlay.classList.remove('visible');
-});
-
-// Close menu when any menu item is clicked
-document.querySelectorAll('.menu-item').forEach(item => {
-  item.addEventListener('click', () => {
-    hamburgerMenu.classList.remove('open');
-    menuOverlay.classList.remove('visible');
-  });
-});
-
 /* ===== Find UI: show up/down + count only when there is input ===== */
 const searchContainer = document.querySelector('.search-container');
 function updateSearchUIState(markDirty = false) {
@@ -2646,10 +2617,6 @@ function showZoomMenu(anchorEl) {
 function hideZoomMenu() {
   zoomMenu.style.display = 'none';
   zoomMenu.setAttribute('aria-hidden', 'true');
-}
-function closeHamburger() {
-  document.getElementById('hamburgerMenu')?.classList.remove('open');
-  document.getElementById('menuOverlay')?.classList.remove('visible');
 }
 zoomBox?.addEventListener('click', (e) => {
   const visible = zoomMenu.style.display === 'block';
