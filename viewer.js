@@ -82,12 +82,39 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
       setHash() {},
       addLinkAttributes(element, data) {
         if (!element) return;
+        const service = this;
         if (data?.url) {
           element.href = data.url;
           element.target = '_blank';
           element.rel = this.externalLinkRel;
+          element.dataset.pdfExternalUrl = data.url;
+          delete element.dataset.pdfDest;
         } else if (data?.dest) {
+          element.dataset.pdfDest = JSON.stringify(data.dest);
           element.href = this.getAnchorUrl(this.getDestinationHash(data.dest));
+          delete element.dataset.pdfExternalUrl;
+        }
+        if (!element.dataset.pdfLinkBound) {
+          element.dataset.pdfLinkBound = '1';
+          element.addEventListener('click', (ev) => {
+            const external = element.dataset.pdfExternalUrl;
+            const destJson = element.dataset.pdfDest;
+            if (external) {
+              ev.preventDefault();
+              window.open(external, '_blank', 'noopener,noreferrer');
+              return;
+            }
+            if (destJson) {
+              ev.preventDefault();
+              let destVal = destJson;
+              try {
+                destVal = JSON.parse(destJson);
+              } catch (_) {
+                // ignore parse errors, fall back to raw string
+              }
+              service.navigateTo(destVal);
+            }
+          });
         }
       },
       goToDestination(dest) {
@@ -197,6 +224,90 @@ const leftBar = document.getElementById('leftBar');
           reject(err);
         }
       });
+    }
+
+    function normalizePdfSourceUrl(url) {
+      if (!url) return url;
+      try {
+        const parsed = new URL(url, location.href);
+        const host = parsed.hostname.toLowerCase();
+        if (host === 'www.dropbox.com' || host === 'dropbox.com') {
+          parsed.hostname = 'dl.dropboxusercontent.com';
+          parsed.searchParams.set('dl', '0');
+          return parsed.toString();
+        }
+      } catch (err) {
+        // Ignore URL parsing issues; fall through to returning the original value.
+      }
+      return url;
+    }
+
+    function clonePdfRect(rect) {
+      if (!rect) return null;
+      const left = Number(rect.left);
+      const right = Number(rect.right);
+      const top = Number(rect.top);
+      const bottom = Number(rect.bottom);
+      if (
+        !Number.isFinite(left) ||
+        !Number.isFinite(right) ||
+        !Number.isFinite(top) ||
+        !Number.isFinite(bottom)
+      ) {
+        return null;
+      }
+      return { left, right, top, bottom };
+    }
+
+    function markPdfThreadForDeletion(anno) {
+      if (!anno || anno.type !== 'comment' || anno.origin !== 'pdf') return;
+      deletedPdfThreads.push({
+        page: anno.page,
+        x: anno.x,
+        y: anno.y,
+        rect: clonePdfRect(anno.pdfRect)
+      });
+    }
+
+    function safeCssEscape(value) {
+      if (typeof value !== 'string') value = String(value ?? '');
+      if (window.CSS?.escape) return window.CSS.escape(value);
+      return value.replace(/[\0-\x1F\x7F"'\\]/g, (ch) => {
+        const hex = ch.charCodeAt(0).toString(16).padStart(2, '0');
+        return `\\${hex} `;
+      });
+    }
+
+    function readWidgetDomState(widgetId) {
+      if (!widgetId) return null;
+      try {
+        const selector = `[data-annotation-id="${safeCssEscape(widgetId)}"]`;
+        const container = document.querySelector(selector);
+        if (!container) return null;
+        const field = container.matches('input, select, textarea')
+          ? container
+          : container.querySelector('input, select, textarea');
+        if (!field) return null;
+        if (field.type === 'checkbox' || field.type === 'radio') {
+          return { type: field.type, checked: field.checked, value: field.value };
+        }
+        if (field.tagName === 'SELECT') {
+          const selected = Array.from(field.selectedOptions || []).map(opt => opt.value);
+          return { type: 'select', value: field.multiple ? selected : (selected[0] ?? '') };
+        }
+        return { type: 'text', value: field.value };
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function commitPdfJsFormEdits() {
+      const active = document.activeElement;
+      if (active && typeof active.blur === 'function' && active.closest('.pdf-annotation-layer')) {
+        const changeEvent = new Event('change', { bubbles: true });
+        try { active.dispatchEvent(changeEvent); } catch (_) {}
+        active.blur();
+      }
     }
 
     function attachLoadErrorCopyHandler() {
@@ -596,7 +707,12 @@ function goToPageNumber(n){
         } catch (_) {}
       }
       const t = [dpr, 0, 0, dpr, 0, 0];
-      slot.renderTask = page.render({ canvasContext: slot.ctx, viewport, transform: t });
+      const renderParams = { canvasContext: slot.ctx, viewport, transform: t };
+      const formsMode = pdfjsLib?.AnnotationMode?.ENABLE_FORMS;
+      if (typeof formsMode === 'number') {
+        renderParams.annotationMode = formsMode;
+      }
+      slot.renderTask = page.render(renderParams);
 
       try {
         await slot.renderTask.promise;
@@ -841,8 +957,12 @@ function goToPageNumber(n){
               const r = (g.root.rect || []).map(Number);
               if (r.length < 4) continue;
               const left = Math.min(r[0], r[2]);
+              const right = Math.max(r[0], r[2]);
               const top = Math.max(r[1], r[3]);
-              const x = left, y = ph - top;
+              const bottom = Math.min(r[1], r[3]);
+              const x = left;
+              const y = ph - top;
+              const pdfRect = { left, right, top, bottom };
 
               const thread = [];
               const rootAuthor = getAuthor(g.root) || 'Imported Author';
@@ -865,7 +985,8 @@ function goToPageNumber(n){
                   thread,
                   type: 'comment',
                   origin: 'pdf',
-                  _importedCount: thread.length
+                  _importedCount: thread.length,
+                  pdfRect
                 });
               }
             }
@@ -1092,11 +1213,11 @@ function goToPageNumber(n){
 
 
       // Helper: find nearest existing Text annotation to use as IRT
-      function findNearestTextAnnotRef(doc, annotsArray, x, y, tol = 32) {
+      function findNearestTextAnnotRef(doc, annotsArray, target, tol = 32) {
           try {
             const N = PDFLib.PDFName;
             const arr = annotsArray.asArray ? annotsArray.asArray() : (annotsArray.array || []);
-            let bestRef = null, bestD2 = 1e12;
+            let bestRef = null, bestScore = 1e12;
             for (const ref of arr) {
               const dict = doc.context.lookup(ref);
               if (!dict || String(dict.get(N.of('Subtype'))) !== '/Text') continue;
@@ -1107,13 +1228,31 @@ function goToPageNumber(n){
               );
               const [x1,y1,x2,y2] = nums;
               const rx1 = Math.min(x1, x2);
+              const rx2 = Math.max(x1, x2);
+              const ry1 = Math.min(y1, y2);
               const ry2 = Math.max(y1, y2);
-              // x is a.x (which is x1 from import)
-              // y is ph - a.y (which is y2 from import)
-              const dx = rx1 - x, dy = ry2 - y;
-              if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) { // Use tight tolerance
-                const d2 = dx*dx + dy*dy;
-                if (d2 < bestD2) { bestD2 = d2; bestRef = ref; }
+              if (target?.rect) {
+                const rectTarget = target.rect;
+                const d = Math.max(
+                  Math.abs(rx1 - rectTarget.left),
+                  Math.abs(rx2 - rectTarget.right),
+                  Math.abs(ry1 - rectTarget.bottom),
+                  Math.abs(ry2 - rectTarget.top)
+                );
+                if (d <= tol && d < bestScore) {
+                  bestRef = ref;
+                  bestScore = d;
+                }
+              } else if (target && Number.isFinite(target.x) && Number.isFinite(target.y)) {
+                const dx = rx1 - target.x;
+                const dy = ry2 - target.y;
+                if (Math.abs(dx) <= tol && Math.abs(dy) <= tol) {
+                  const dist = dx * dx + dy * dy;
+                  if (dist < bestScore) {
+                    bestScore = dist;
+                    bestRef = ref;
+                  }
+                }
               }
             }
             return bestRef;
@@ -1225,6 +1364,14 @@ function goToPageNumber(n){
           const pdfFields = form.getFields();
           if (!pdfFields?.length) return;
           const fieldMap = new Map(pdfFields.map(f => [f.getName(), f]));
+          const domStateCache = new Map();
+          const getDomState = (id) => {
+            if (!id) return null;
+            if (domStateCache.has(id)) return domStateCache.get(id);
+            const state = readWidgetDomState(id);
+            domStateCache.set(id, state);
+            return state;
+          };
           let storage = null;
           try {
             storage = pdfDoc.annotationStorage?.getAll?.();
@@ -1238,11 +1385,21 @@ function goToPageNumber(n){
             const widgetArray = Array.isArray(widgets) ? widgets : [widgets];
             let value = widgetArray.find(w => w && w.value !== undefined)?.value;
             let storageEntry = null;
+            let domState = null;
             for (const widget of widgetArray) {
               const entry = storageLookup?.[widget.id];
               if (entry !== undefined) {
                 storageEntry = entry;
                 break;
+              }
+              if (!domState) {
+                domState = getDomState(widget.id);
+              }
+            }
+            if (!domState) {
+              for (const widget of widgetArray) {
+                domState = getDomState(widget.id);
+                if (domState) break;
               }
             }
             if (storageEntry) {
@@ -1256,45 +1413,77 @@ function goToPageNumber(n){
               const exportVal = widgetArray[0]?.exportValue || 'Yes';
 
               if (ctor === 'PDFTextField') {
-                const v = entry.valueAsString ?? entry.value ?? value ?? '';
+                const domValue = domState?.value;
+                const v = (typeof domValue === 'string' ? domValue : null)
+                  ?? entry.valueAsString ?? entry.value ?? value ?? '';
                 field.setText(v != null ? String(v) : '');
               } else if (ctor === 'PDFCheckBox') {
                 // pdf.js may store {checked:true}, {value:true}, or {valueAsString:'Yes'|'Off'}
                 const vStr = entry.valueAsString ?? (typeof entry.value === 'string' ? entry.value : null);
-                const isOn =
+                let isOn =
                   entry.checked === true ||
                   entry.value === true ||
                   vStr === exportVal || vStr === 'Yes' || vStr === 'On' ||
                   value === true || value === exportVal || value === 'Yes' || value === 'On';
+                if (domState?.checked === true) isOn = true;
+                if (domState?.checked === false) isOn = false;
+                if (typeof domState?.value === 'string') {
+                  const domStr = domState.value;
+                  if (domStr === exportVal || domStr === 'Yes' || domStr === 'On') {
+                    isOn = true;
+                  } else if (domStr === 'Off' || domStr === 'No') {
+                    isOn = false;
+                  }
+                }
                 if (isOn) field.check(); else field.uncheck();
               } else if (ctor === 'PDFRadioGroup') {
-                const v = entry.valueAsString ?? entry.value ?? value ?? widgetArray[0]?.value;
+                const domVal = typeof domState?.value === 'string' ? domState.value : null;
+                const v = domVal ?? entry.valueAsString ?? entry.value ?? value ?? widgetArray[0]?.value;
                 if (typeof v === 'string') field.select(v);
               } else if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') {
                 // May be a string, or an array for multi-select
-                const v = entry.value ?? entry.valueAsString ?? value;
+                const domVal = domState?.value;
+                const v = domVal ?? entry.value ?? entry.valueAsString ?? value;
                 if (Array.isArray(v)) {
                   field.select(...v.map(x => String(x)));
                 } else if (v != null) {
                   field.select(String(v));
                 }
               } else if (typeof field.setText === 'function') {
-                const v = entry.valueAsString ?? entry.value ?? value;
+                const domValue = domState?.value;
+                const v = (domValue != null ? domValue : (entry.valueAsString ?? entry.value ?? value));
                 if (v != null) field.setText(String(v));
               }
             } catch (err) {
                console.warn('Failed to apply form value for field', name, err);
             }
           }
+
+          try {
+            const helvetica = await ensureFont('Helvetica');
+            form.updateFieldAppearances(helvetica);
+          } catch (err) {
+            console.warn('Failed to refresh form appearances', err);
+          }
         }
 
+        commitPdfJsFormEdits();
         await applyFormValues(doc);
 
         // Process deleted PDF threads
         const uniqueDeletes = new Map();
         for (const del of deletedPdfThreads) {
-          const key = `${del.page}-${Math.round(del.x)}-${Math.round(del.y)}`;
-          uniqueDeletes.set(key, del); // De-duplicate
+          if (!del) continue;
+          const rect = clonePdfRect(del.rect);
+          const key = rect
+            ? `${del.page}-${Math.round(rect.left)}-${Math.round(rect.top)}-${Math.round(rect.right)}-${Math.round(rect.bottom)}`
+            : `${del.page}-${Math.round(del.x)}-${Math.round(del.y)}`;
+          uniqueDeletes.set(key, {
+            page: del.page,
+            x: Number(del.x),
+            y: Number(del.y),
+            rect
+          });
         }
 
         for (const del of uniqueDeletes.values()) {
@@ -1304,8 +1493,6 @@ function goToPageNumber(n){
             
             const page = pagesLib[pIndex];
             const { height: ph } = page.getSize();
-            const delY_pdf = ph - del.y; // This is the y2 coordinate
-            
             const annotsArrayRef = page.node.lookup(N.of('Annots'));
             if (!annotsArrayRef) continue;
             const annotsArray = doc.context.lookup(annotsArrayRef);
@@ -1313,7 +1500,11 @@ function goToPageNumber(n){
             const arr = annotsArray.asArray();
             if (!arr || !arr.length) continue;
 
-            const rootRefToDel = findNearestTextAnnotRef(doc, annotsArray, del.x, delY_pdf, 32);
+            const target = del.rect
+              ? { rect: del.rect }
+              : { x: Number(del.x), y: ph - Number(del.y) };
+
+            const rootRefToDel = findNearestTextAnnotRef(doc, annotsArray, target, 6);
 
             if (rootRefToDel) {
               const refsToKeep = [];
@@ -1403,17 +1594,21 @@ function goToPageNumber(n){
                 });
               }
             } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
-              const rootY = ph - a.y - 24;
+              const rectInfo = clonePdfRect(a.pdfRect);
+              const estimatedHeight = rectInfo ? Math.max(8, rectInfo.top - rectInfo.bottom) : 24;
+              const rootY = rectInfo ? rectInfo.bottom : ph - a.y - 24;
+              const rootTarget = rectInfo ? { rect: rectInfo } : { x: a.x, y: ph - a.y };
+              const rootX = rectInfo ? rectInfo.left : a.x;
               let rootRef = null;
 
               const annotsArray = getAnnotsArray(page); // ensure we have an Annots array
 
               if (a.origin === 'pdf') {
-                rootRef = findNearestTextAnnotRef(doc, annotsArray, a.x, rootY) || null;
+                rootRef = findNearestTextAnnotRef(doc, annotsArray, rootTarget, 6) || null;
                 if (!rootRef) {
                   console.warn('Skipping reply export for comment without original thread', {
                     page: a.page,
-                    x: a.x,
+                    x: rootX,
                     y: rootY
                   });
                   continue;
@@ -1422,18 +1617,18 @@ function goToPageNumber(n){
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
                   addReplyAnnot(page, rootRef,
-                    a.x + 6 * i, rootY - 6 * i, 24, 24,
+                    rootX + 6 * i, rootY - 6 * i, 24, 24,
                     String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
                 // Normal user-created thread: create root + all replies
                 const root = a.thread[0];
-                rootRef = addTextAnnot(page, a.x, rootY, 24, 24,
+                rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
                 for (let i = 1; i < a.thread.length; i++) {
                   const r = a.thread[i];
                    addReplyAnnot(page, rootRef,
-                    a.x + 6*i, rootY - 6*i, 24, 24,
+                    rootX + 6*i, rootY - 6*i, 24, 24,
                     String(r.text||''), String(r.author || userName || 'User'));
                 }
               }
@@ -1891,7 +2086,7 @@ function goToPageNumber(n){
       if (!el) return;
       // If this was an imported PDF comment, remember to delete the original thread on save
       if (anno?.type === 'comment' && anno.origin === 'pdf') {
-        deletedPdfThreads.push({ page: anno.page, x: anno.x, y: anno.y });
+        markPdfThreadForDeletion(anno);
       }
       if (anno) removeAnnotationFromState(anno);
       if (el.parentElement) el.parentElement.removeChild(el);
@@ -2026,6 +2221,7 @@ function goToPageNumber(n){
         anno.origin = importedCount ? 'pdf' : 'user';
       } else if (anno.origin === 'pdf' && importedCount === 0) {
         anno.origin = 'user';
+        delete anno.pdfRect;
       }
       return anno;
     }
@@ -2102,7 +2298,7 @@ function goToPageNumber(n){
         // Check if we are deleting an *imported* reply
         if (anno.origin === 'pdf' && i < (anno._importedCount || 0)) {
           // Mark the root thread for deletion from the original PDF
-          deletedPdfThreads.push({ page: anno.page, x: anno.x, y: anno.y });
+          markPdfThreadForDeletion(anno);
         }
     
         anno.thread.splice(i, 1);
@@ -2112,6 +2308,7 @@ function goToPageNumber(n){
         if (anno.origin === 'pdf') {
           anno.origin = 'user'; // Convert to a user thread
           anno._importedCount = 0; // It will now be saved from scratch
+          delete anno.pdfRect;
         }
 
         normalizeCommentAnnotation(anno);
@@ -2827,7 +3024,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
         return;
       }
 
-      sourceUrl = sourceUrl.trim();
+      sourceUrl = normalizePdfSourceUrl(sourceUrl.trim());
       hideLoadError();
 
       try {
@@ -2941,7 +3138,12 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       canvas.height = Math.floor(printViewport.height);
       canvas.style.width = `${baseViewport.width}px`;
       canvas.style.height = `${baseViewport.height}px`;
-      const renderTask = page.render({ canvasContext: ctx, viewport: printViewport });
+      const printParams = { canvasContext: ctx, viewport: printViewport };
+      const formsMode = pdfjsLib?.AnnotationMode?.ENABLE_FORMS;
+      if (typeof formsMode === 'number') {
+        printParams.annotationMode = formsMode;
+      }
+      const renderTask = page.render(printParams);
       await renderTask.promise;
       const wrapper = document.createElement('div');
       wrapper.className = 'print-page';
