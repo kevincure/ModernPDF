@@ -857,21 +857,47 @@ function goToPageNumber(n){
           tagName: el.tagName,
           className: el.className,
           dataAnnotationId: el.dataset?.annotationId,
+          innerHTML: el.innerHTML?.substring(0, 50),
           style: {
             display: el.style.display,
             visibility: el.style.visibility,
-            opacity: el.style.opacity
+            opacity: el.style.opacity,
+            backgroundColor: el.style.backgroundColor
           },
-          computedDisplay: window.getComputedStyle(el).display
+          computedStyle: {
+            display: window.getComputedStyle(el).display,
+            backgroundColor: window.getComputedStyle(el).backgroundColor,
+            position: window.getComputedStyle(el).position
+          }
         })));
 
-        // Specifically check for text annotations that might have slipped through
-        const textAnnotElems = slot.pdfLayer.querySelectorAll('.textAnnotation, .popupWrapper, [data-annotation-type="text"]');
+        // Specifically check for text/popup annotations that might have slipped through
+        const textAnnotElems = slot.pdfLayer.querySelectorAll('.textAnnotation, .popupWrapper, .popupAnnotation, [data-annotation-type="text"], [data-annotation-type="popup"]');
         if (textAnnotElems.length > 0) {
-          console.warn(`[ANNOT DEBUG] Page ${pageNum}: WARNING! Found ${textAnnotElems.length} text annotation elements in PDF layer despite filtering!`, Array.from(textAnnotElems).map(el => ({
+          console.warn(`[ANNOT DEBUG] Page ${pageNum}: WARNING! Found ${textAnnotElems.length} text/popup annotation elements in PDF layer despite filtering!`, Array.from(textAnnotElems).map(el => ({
             className: el.className,
+            tagName: el.tagName,
             computedDisplay: window.getComputedStyle(el).display,
-            isVisible: window.getComputedStyle(el).display !== 'none'
+            isVisible: window.getComputedStyle(el).display !== 'none',
+            backgroundColor: window.getComputedStyle(el).backgroundColor
+          })));
+          // FORCIBLY REMOVE THEM
+          console.log(`[ANNOT DEBUG] Page ${pageNum}: Forcibly removing ${textAnnotElems.length} text/popup elements...`);
+          textAnnotElems.forEach(el => el.remove());
+        }
+
+        // Also check the entire page container for any stray annotation elements
+        const pageContainer = slot.canvas?.parentElement;
+        if (pageContainer) {
+          const allAnnots = pageContainer.querySelectorAll('[class*="Annotation"], [data-annotation-type]');
+          console.log(`[ANNOT DEBUG] Page ${pageNum}: Found ${allAnnots.length} total annotation-like elements in page container:`, Array.from(allAnnots).map(el => ({
+            className: el.className,
+            tagName: el.tagName,
+            parent: el.parentElement?.className,
+            computedStyle: {
+              display: window.getComputedStyle(el).display,
+              backgroundColor: window.getComputedStyle(el).backgroundColor
+            }
           })));
         }
       } catch (err) {
@@ -879,6 +905,40 @@ function goToPageNumber(n){
           console.warn('Annotation layer render failed', err);
         }
       }
+
+      // Final cleanup: Remove any text/popup annotations that might appear after render
+      setTimeout(() => {
+        // Check for text/popup annotation elements
+        const allTextPopups = document.querySelectorAll('.textAnnotation, .popupWrapper, .popupAnnotation, [data-annotation-type="text"], [data-annotation-type="popup"]');
+        if (allTextPopups.length > 0) {
+          console.warn(`[CLEANUP] Found ${allTextPopups.length} text/popup elements after render, removing...`, Array.from(allTextPopups).map(el => ({
+            className: el.className,
+            tagName: el.tagName,
+            parent: el.parentElement?.className,
+            backgroundColor: window.getComputedStyle(el).backgroundColor
+          })));
+          allTextPopups.forEach(el => el.remove());
+        }
+
+        // Also check for any button elements in annotation layers that aren't our custom comment pins
+        const allButtons = document.querySelectorAll('.pdf-annotation-layer button:not(.comment-pin)');
+        if (allButtons.length > 0) {
+          console.warn(`[CLEANUP] Found ${allButtons.length} non-custom buttons in PDF layer, checking...`, Array.from(allButtons).map(el => ({
+            className: el.className,
+            innerHTML: el.innerHTML?.substring(0, 50),
+            parent: el.parentElement?.className,
+            backgroundColor: window.getComputedStyle(el).backgroundColor,
+            isCommentPin: el.classList.contains('comment-pin')
+          })));
+          // Remove buttons that aren't comment pins
+          allButtons.forEach(el => {
+            if (!el.classList.contains('comment-pin')) {
+              console.log('[CLEANUP] Removing non-comment-pin button:', el);
+              el.remove();
+            }
+          });
+        }
+      }, 100);
     }
 
     async function renderTextLayersForAll() {
