@@ -766,6 +766,7 @@ function goToPageNumber(n){
         }
         syncPdfLayerTransform(slot, viewport);
       }
+      const pageNum = slot.pageNum || 'unknown';
       const allAnnots = await page.getAnnotations({ intent: 'display' });
       console.log(`[ANNOT DEBUG] Page ${pageNum}: Loaded ${allAnnots.length} total annotations`, allAnnots.map(a => ({
         id: a.id,
@@ -906,12 +907,14 @@ function goToPageNumber(n){
         }
       }
 
-      // Final cleanup: Remove any text/popup annotations that might appear after render
+      // Final cleanup: Comprehensive scan to find ALL visible elements
       setTimeout(() => {
-        // Check for text/popup annotation elements
+        console.log('[CLEANUP] Running comprehensive DOM scan for mystery elements...');
+
+        // 1. Check for text/popup annotation elements
         const allTextPopups = document.querySelectorAll('.textAnnotation, .popupWrapper, .popupAnnotation, [data-annotation-type="text"], [data-annotation-type="popup"]');
         if (allTextPopups.length > 0) {
-          console.warn(`[CLEANUP] Found ${allTextPopups.length} text/popup elements after render, removing...`, Array.from(allTextPopups).map(el => ({
+          console.warn(`[CLEANUP] Found ${allTextPopups.length} text/popup elements, removing...`, Array.from(allTextPopups).map(el => ({
             className: el.className,
             tagName: el.tagName,
             parent: el.parentElement?.className,
@@ -920,23 +923,65 @@ function goToPageNumber(n){
           allTextPopups.forEach(el => el.remove());
         }
 
-        // Also check for any button elements in annotation layers that aren't our custom comment pins
+        // 2. Check for any button elements in annotation layers that aren't our custom comment pins
         const allButtons = document.querySelectorAll('.pdf-annotation-layer button:not(.comment-pin)');
         if (allButtons.length > 0) {
-          console.warn(`[CLEANUP] Found ${allButtons.length} non-custom buttons in PDF layer, checking...`, Array.from(allButtons).map(el => ({
+          console.warn(`[CLEANUP] Found ${allButtons.length} non-custom buttons in PDF layer, removing...`, Array.from(allButtons).map(el => ({
+            className: el.className,
+            innerHTML: el.innerHTML?.substring(0, 50),
+            parent: el.parentElement?.className,
+            backgroundColor: window.getComputedStyle(el).backgroundColor
+          })));
+          allButtons.forEach(el => el.remove());
+        }
+
+        // 3. COMPREHENSIVE SCAN: Find ALL button elements on the entire page
+        const allPageButtons = document.querySelectorAll('button');
+        console.log(`[CLEANUP] Total buttons on page: ${allPageButtons.length}`);
+        const suspiciousButtons = Array.from(allPageButtons).filter(btn => {
+          const styles = window.getComputedStyle(btn);
+          const bgColor = styles.backgroundColor;
+          // Check for purple/yellow/orange backgrounds or if not a comment-pin
+          const isPurple = bgColor.includes('128, 0, 128') || bgColor.includes('purple');
+          const isYellow = bgColor.includes('255, 255, 0') || bgColor.includes('yellow');
+          const isOrange = bgColor.includes('255, 165, 0') || bgColor.includes('orange');
+          const isNotCommentPin = !btn.classList.contains('comment-pin');
+          return (isPurple || isYellow || isOrange) || (isNotCommentPin && btn.parentElement?.className?.includes('layer'));
+        });
+
+        if (suspiciousButtons.length > 0) {
+          console.warn(`[CLEANUP] Found ${suspiciousButtons.length} suspicious buttons:`, suspiciousButtons.map(btn => ({
+            className: btn.className,
+            innerHTML: btn.innerHTML?.substring(0, 100),
+            parent: btn.parentElement?.className,
+            grandparent: btn.parentElement?.parentElement?.className,
+            backgroundColor: window.getComputedStyle(btn).backgroundColor,
+            position: window.getComputedStyle(btn).position,
+            left: btn.style.left,
+            top: btn.style.top,
+            isCommentPin: btn.classList.contains('comment-pin')
+          })));
+        }
+
+        // 4. Scan for any elements with colored backgrounds in layer elements
+        const allLayerChildren = document.querySelectorAll('.layer > *, [class*="layer"] > *');
+        console.log(`[CLEANUP] Scanning ${allLayerChildren.length} elements in layers...`);
+        const coloredElements = Array.from(allLayerChildren).filter(el => {
+          const styles = window.getComputedStyle(el);
+          const bgColor = styles.backgroundColor;
+          return bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
+        });
+        if (coloredElements.length > 0) {
+          console.warn(`[CLEANUP] Found ${coloredElements.length} elements with backgrounds in layers:`, coloredElements.map(el => ({
+            tagName: el.tagName,
             className: el.className,
             innerHTML: el.innerHTML?.substring(0, 50),
             parent: el.parentElement?.className,
             backgroundColor: window.getComputedStyle(el).backgroundColor,
-            isCommentPin: el.classList.contains('comment-pin')
+            position: window.getComputedStyle(el).position,
+            left: el.style.left,
+            top: el.style.top
           })));
-          // Remove buttons that aren't comment pins
-          allButtons.forEach(el => {
-            if (!el.classList.contains('comment-pin')) {
-              console.log('[CLEANUP] Removing non-comment-pin button:', el);
-              el.remove();
-            }
-          });
         }
       }, 100);
     }
