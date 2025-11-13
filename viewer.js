@@ -707,11 +707,15 @@ function goToPageNumber(n){
         } catch (_) {}
       }
       const t = [dpr, 0, 0, dpr, 0, 0];
-      const renderParams = { canvasContext: slot.ctx, viewport, transform: t };
-      const formsMode = pdfjsLib?.AnnotationMode?.ENABLE_FORMS;
-      if (typeof formsMode === 'number') {
-        renderParams.annotationMode = formsMode;
-      }
+      const renderParams = {
+        canvasContext: slot.ctx,
+        viewport,
+        transform: t,
+        // CRITICAL: Don't render annotation appearances on canvas - we handle them in annotation layer
+        // This prevents pdf.js from drawing sticky note icons on the canvas
+        annotationMode: pdfjsLib?.AnnotationMode?.DISABLE || 0
+      };
+      console.log('[RENDER DEBUG] Rendering page with annotationMode DISABLED to prevent canvas annotation icons');
       slot.renderTask = page.render(renderParams);
 
       try {
