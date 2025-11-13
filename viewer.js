@@ -778,9 +778,24 @@ function goToPageNumber(n){
       // Drop sticky-note comments; we render our own pins/threads for those.
       const annotations = allAnnots.filter(a => {
         const t = a.annotationType ?? a.subtype ?? a.subType;
-        const isFiltered = (t === 1 || t === 'Text' || t === 28 || t === 'Popup');
+        // Filter out Text annotations (type 1) and Popup annotations (types 16 and 28)
+        // Acrobat creates type 16 Popups, other tools may create type 28
+        const isFiltered = (
+          t === 1 || t === 'Text' ||           // Text annotations
+          t === 16 || t === 28 || t === 'Popup' // Popup annotations (both types)
+        );
         if (isFiltered) {
           console.log(`[ANNOT DEBUG] Filtering out annotation:`, {
+            id: a.id,
+            type: t,
+            annotationType: a.annotationType,
+            subtype: a.subtype,
+            subType: a.subType,
+            reason: t === 1 || t === 'Text' ? 'Text annotation' : 'Popup annotation'
+          });
+        } else {
+          // Log annotations that are NOT filtered so we can see what's getting through
+          console.log(`[ANNOT DEBUG] Keeping annotation:`, {
             id: a.id,
             type: t,
             annotationType: a.annotationType,
@@ -788,7 +803,7 @@ function goToPageNumber(n){
             subType: a.subType
           });
         }
-        // pdf.js: AnnotationType.TEXT === 1
+        // pdf.js: AnnotationType.TEXT === 1, POPUP === 16 or 28
          return !isFiltered;
       });
 

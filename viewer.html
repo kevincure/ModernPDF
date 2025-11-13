@@ -950,8 +950,12 @@
     }
   }
 
+/* Hide native PDF text/popup annotations - we render our own comment pins */
 .pdf-annotation-layer .textAnnotation { display: none !important; }
 .pdf-annotation-layer .popupWrapper { display: none !important; }
+.pdf-annotation-layer .popupAnnotation { display: none !important; }
+.pdf-annotation-layer [data-annotation-type="text"] { display: none !important; }
+.pdf-annotation-layer [data-annotation-type="popup"] { display: none !important; }
 @media print {
     body > .app > .header,
     body > .reader-hint,
