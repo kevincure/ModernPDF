@@ -800,6 +800,18 @@ function goToPageNumber(n){
       }
       const allAnnots = await page.getAnnotations({ intent: 'display' });
 
+      console.log('[LINK DEBUG] All annotations from PDF:', allAnnots.map(a => ({
+        id: a.id,
+        type: a.annotationType,
+        subtype: a.subtype,
+        hasUrl: !!a.url,
+        hasAction: !!a.action,
+        hasDest: !!a.dest,
+        url: a.url,
+        dest: a.dest,
+        action: a.action
+      })));
+
       // Drop sticky-note comments; we render our own pins/threads for those.
       const annotations = allAnnots.filter(a => {
         const t = a.annotationType ?? a.subtype ?? a.subType;
@@ -807,6 +819,14 @@ function goToPageNumber(n){
         // Acrobat creates type 16 Popups, other tools may create type 28
         return !(t === 1 || t === 'Text' || t === 16 || t === 28 || t === 'Popup');
       });
+
+      console.log('[LINK DEBUG] Annotations after filtering:', annotations.map(a => ({
+        id: a.id,
+        type: a.annotationType,
+        subtype: a.subtype,
+        url: a.url,
+        dest: a.dest
+      })));
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
         return;
