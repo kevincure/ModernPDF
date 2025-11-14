@@ -50,6 +50,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let lastSearchQuery = '';
     let searchDirty = false;
     const deletedPdfThreads = [];
+    let currentPdfFilename = 'annotated.pdf';
 
     const el = (id) => document.getElementById(id);
     const pagesEl = el('pages'), mainEl = el('main');
@@ -294,14 +295,12 @@ const leftBar = document.getElementById('leftBar');
         const selector = `[data-annotation-id="${safeCssEscape(widgetId)}"]`;
         const container = document.querySelector(selector);
         if (!container) {
-          console.log('[FORM DEBUG] No container found for widget:', widgetId);
           return null;
         }
         const field = container.matches('input, select, textarea')
           ? container
           : container.querySelector('input, select, textarea');
         if (!field) {
-          console.log('[FORM DEBUG] No field found in container for widget:', widgetId);
           return null;
         }
         let result = null;
@@ -313,10 +312,8 @@ const leftBar = document.getElementById('leftBar');
         } else {
           result = { type: 'text', value: field.value };
         }
-        console.log('[FORM DEBUG] Read DOM state for widget', widgetId, ':', result);
         return result;
       } catch (err) {
-        console.error('[FORM DEBUG] Error reading widget DOM state:', widgetId, err);
         return null;
       }
     }
@@ -1181,6 +1178,7 @@ function goToPageNumber(n){
     if (fileInput) fileInput.onchange = async (e) => {
       const f = e.target.files[0];
       if (!f) return;
+      currentPdfFilename = f.name;
       const b = await f.arrayBuffer();
       await loadPdfBytesArray(new Uint8Array(b));
       e.target.value = '';
@@ -1403,8 +1401,6 @@ function goToPageNumber(n){
             console.warn('Reading annotation storage failed:', err);
           }
           const storageLookup = storage && typeof storage === 'object' ? storage : {};
-          console.log('[FORM DEBUG] Processing', Object.keys(fieldObjects).length, 'fields');
-          console.log('[FORM DEBUG] Annotation storage:', storage);
           for (const [name, widgets] of Object.entries(fieldObjects)) {
             const field = fieldMap.get(name);
             if (!field) continue;
@@ -1432,19 +1428,15 @@ function goToPageNumber(n){
               if (storageEntry.value !== undefined) value = storageEntry.value;
               else if (storageEntry.valueAsString !== undefined) value = storageEntry.valueAsString;
             }
-            console.log('[FORM DEBUG] Field:', name, '| Type:', field.constructor?.name, '| Storage:', storageEntry, '| DOM:', domState, '| Default value:', value);
             try {
               const ctor = field.constructor?.name;
               // Prefer storage entry over static widget default
               const entry = storageEntry || {};
               const exportVal = widgetArray[0]?.exportValue || 'Yes';
 
-              if (ctor === 'PDFTextField') {
-                const domValue = domState?.value;
-                const v = (typeof domValue === 'string' ? domValue : null)
-                  ?? entry.valueAsString ?? entry.value ?? value ?? '';
-                field.setText(v != null ? String(v) : '');
-              } else if (ctor === 'PDFCheckBox') {
+              // Use method detection instead of constructor names since pdf-lib may be minified
+              if (typeof field.check === 'function' && typeof field.uncheck === 'function') {
+                // This is a checkbox
                 // pdf.js may store {checked:true}, {value:true}, or {valueAsString:'Yes'|'Off'}
                 const vStr = entry.valueAsString ?? (typeof entry.value === 'string' ? entry.value : null);
                 let isOn =
@@ -1462,26 +1454,24 @@ function goToPageNumber(n){
                     isOn = false;
                   }
                 }
-                console.log('[FORM DEBUG] Checkbox', name, '| Setting to:', isOn ? 'checked' : 'unchecked', '| exportVal:', exportVal);
                 if (isOn) field.check(); else field.uncheck();
-              } else if (ctor === 'PDFRadioGroup') {
-                const domVal = typeof domState?.value === 'string' ? domState.value : null;
-                const v = domVal ?? entry.valueAsString ?? entry.value ?? value ?? widgetArray[0]?.value;
-                if (typeof v === 'string') field.select(v);
-              } else if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') {
-                // May be a string, or an array for multi-select
+              } else if (typeof field.select === 'function') {
+                // This is a dropdown, option list, or radio group
                 const domVal = domState?.value;
                 const v = domVal ?? entry.value ?? entry.valueAsString ?? value;
-                console.log('[FORM DEBUG] Dropdown/List', name, '| Setting to:', v);
                 if (Array.isArray(v)) {
                   field.select(...v.map(x => String(x)));
+                } else if (typeof v === 'string') {
+                  field.select(v);
                 } else if (v != null) {
                   field.select(String(v));
                 }
               } else if (typeof field.setText === 'function') {
+                // This is a text field
                 const domValue = domState?.value;
-                const v = (domValue != null ? domValue : (entry.valueAsString ?? entry.value ?? value));
-                if (v != null) field.setText(String(v));
+                const v = (typeof domValue === 'string' ? domValue : null)
+                  ?? entry.valueAsString ?? entry.value ?? value ?? '';
+                field.setText(v != null ? String(v) : '');
               }
             } catch (err) {
                console.warn('Failed to apply form value for field', name, err);
@@ -1500,6 +1490,7 @@ function goToPageNumber(n){
         await applyFormValues(doc);
 
         // Process deleted PDF threads
+        console.log('[DELETE DEBUG] deletedPdfThreads:', deletedPdfThreads);
         const uniqueDeletes = new Map();
         for (const del of deletedPdfThreads) {
           if (!del) continue;
@@ -1514,12 +1505,13 @@ function goToPageNumber(n){
             rect
           });
         }
+        console.log('[DELETE DEBUG] uniqueDeletes:', Array.from(uniqueDeletes.values()));
 
         for (const del of uniqueDeletes.values()) {
           try {
             const pIndex = parseInt(del.page, 10) - 1;
             if (pIndex < 0 || pIndex >= pagesLib.length) continue;
-            
+
             const page = pagesLib[pIndex];
             const { height: ph } = page.getSize();
             const annotsArrayRef = page.node.lookup(N.of('Annots'));
@@ -1529,15 +1521,26 @@ function goToPageNumber(n){
             const arr = annotsArray.asArray();
             if (!arr || !arr.length) continue;
 
+            console.log('[DELETE DEBUG] Page', del.page, '- Total annotations:', arr.length);
+
             const target = del.rect
               ? { rect: del.rect }
               : { x: Number(del.x), y: ph - Number(del.y) };
 
+            console.log('[DELETE DEBUG] Looking for annotation at target:', target);
+
             const rootRefToDel = findNearestTextAnnotRef(doc, annotsArray, target, 6);
+
+            console.log('[DELETE DEBUG] Found rootRefToDel:', rootRefToDel);
 
             if (rootRefToDel) {
               const refsToKeep = [];
               const refsToDel = new Set([rootRefToDel]);
+
+              // Log root annotation details
+              const rootDict = doc.context.lookup(rootRefToDel);
+              console.log('[DELETE DEBUG] Root annotation contents:', rootDict?.get(N.of('Contents'))?.toString());
+              console.log('[DELETE DEBUG] Root ref:', rootRefToDel);
 
               // Now find all replies to that root
               for (const ref of arr) {
@@ -1546,17 +1549,28 @@ function goToPageNumber(n){
                 const dict = doc.context.lookup(ref);
                 const irt = dict?.get(N.of('IRT'));
 
+                console.log('[DELETE DEBUG] Checking ref:', ref,
+                  '| IRT:', irt,
+                  '| IRT === rootRefToDel:', irt === rootRefToDel,
+                  '| Contents:', dict?.get(N.of('Contents'))?.toString());
+
                 if (irt === rootRefToDel) {
                   refsToDel.add(ref); // Delete replies too
+                  console.log('[DELETE DEBUG] -> Marked for deletion (reply)');
                 } else {
                   refsToKeep.push(ref);
+                  console.log('[DELETE DEBUG] -> Keeping');
                 }
               }
 
-              // If any refs were marked for deletion, create a new Annots array
+              console.log('[DELETE DEBUG] Total refs to delete:', refsToDel.size);
+              console.log('[DELETE DEBUG] Total refs to keep:', refsToKeep.length);
+
+              // If any refs were marked for deletion, rebuild the Annots array
               if (refsToDel.size > 0) {
                 const newAnnotsArray = doc.context.obj(refsToKeep);
                 page.node.set(N.of('Annots'), newAnnotsArray);
+                console.log('[DELETE DEBUG] Updated page Annots array');
               }
             }
 
@@ -1623,6 +1637,15 @@ function goToPageNumber(n){
                 });
               }
             } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
+              console.log('[DELETE DEBUG] Processing comment annotation:', {
+                page: a.page,
+                origin: a.origin,
+                thread: a.thread,
+                x: a.x,
+                y: a.y,
+                pdfRect: a.pdfRect
+              });
+
               const rectInfo = clonePdfRect(a.pdfRect);
               const estimatedHeight = rectInfo ? Math.max(8, rectInfo.top - rectInfo.bottom) : 24;
               const rootY = rectInfo ? rectInfo.bottom : ph - a.y - 24;
@@ -1633,7 +1656,9 @@ function goToPageNumber(n){
               const annotsArray = getAnnotsArray(page);
 
               if (a.origin === 'pdf') {
+                console.log('[DELETE DEBUG] Comment has origin=pdf, looking for original annotation at:', rootTarget);
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, rootTarget, 6) || null;
+                console.log('[DELETE DEBUG] Found rootRef:', rootRef);
                 if (!rootRef) {
                   console.warn('Skipping reply export for comment without original thread', {
                     page: a.page,
@@ -1643,13 +1668,16 @@ function goToPageNumber(n){
                   continue;
                 }
                 const start = Math.max((a._importedCount | 0), 1);
+                console.log('[DELETE DEBUG] Adding replies starting from index', start, 'out of', a.thread.length);
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
+                  console.log('[DELETE DEBUG] Adding reply:', r.text);
                   addReplyAnnot(page, rootRef,
                     rootX + 6 * i, rootY - 6 * i, 24, 24,
                     String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
+                console.log('[DELETE DEBUG] Comment has origin=' + a.origin + ', creating new thread');
                 const root = a.thread[0];
                 rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
@@ -1675,7 +1703,7 @@ function goToPageNumber(n){
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'annotated.pdf';
+        a.download = currentPdfFilename;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 0);
       } catch (err) {
@@ -3067,6 +3095,18 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
           }
           const buf = await res.arrayBuffer();
           bytes = new Uint8Array(buf);
+        }
+
+        // Extract filename from URL
+        try {
+          const urlObj = new URL(sourceUrl);
+          const pathname = urlObj.pathname;
+          const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+          if (filename && filename.endsWith('.pdf')) {
+            currentPdfFilename = decodeURIComponent(filename);
+          }
+        } catch (err) {
+          // If URL parsing fails, keep default filename
         }
 
         await loadPdfBytesArray(bytes);
