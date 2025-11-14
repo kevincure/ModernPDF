@@ -82,16 +82,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
       setHash() {},
       addLinkAttributes(element, data) {
         if (!element) return;
-        console.log('[LINK DEBUG] addLinkAttributes called with FULL data object:', data);
-        console.log('[LINK DEBUG] data keys:', Object.keys(data || {}));
-        console.log('[LINK DEBUG] Adding link attributes to element:', {
-          tagName: element.tagName,
-          className: element.className,
-          hasUrl: !!data?.url,
-          hasDest: !!data?.dest,
-          url: data?.url,
-          dest: data?.dest
-        });
+
+        // Handle case where pdf.js passes URL string directly instead of object
+        if (typeof data === 'string') {
+          console.log('[LINK FIX] Data is a string (URL), converting to object:', data);
+          data = { url: data };
+        }
+
         const service = this;
         if (data?.url) {
           element.href = data.url;
