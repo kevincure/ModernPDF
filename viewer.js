@@ -50,6 +50,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     let lastSearchQuery = '';
     let searchDirty = false;
     const deletedPdfThreads = [];
+    let currentPdfFilename = 'annotated.pdf';
 
     const el = (id) => document.getElementById(id);
     const pagesEl = el('pages'), mainEl = el('main');
@@ -294,14 +295,12 @@ const leftBar = document.getElementById('leftBar');
         const selector = `[data-annotation-id="${safeCssEscape(widgetId)}"]`;
         const container = document.querySelector(selector);
         if (!container) {
-          console.log('[FORM DEBUG] No container found for widget:', widgetId);
           return null;
         }
         const field = container.matches('input, select, textarea')
           ? container
           : container.querySelector('input, select, textarea');
         if (!field) {
-          console.log('[FORM DEBUG] No field found in container for widget:', widgetId);
           return null;
         }
         let result = null;
@@ -313,10 +312,8 @@ const leftBar = document.getElementById('leftBar');
         } else {
           result = { type: 'text', value: field.value };
         }
-        console.log('[FORM DEBUG] Read DOM state for widget', widgetId, ':', result);
         return result;
       } catch (err) {
-        console.error('[FORM DEBUG] Error reading widget DOM state:', widgetId, err);
         return null;
       }
     }
@@ -1181,6 +1178,7 @@ function goToPageNumber(n){
     if (fileInput) fileInput.onchange = async (e) => {
       const f = e.target.files[0];
       if (!f) return;
+      currentPdfFilename = f.name;
       const b = await f.arrayBuffer();
       await loadPdfBytesArray(new Uint8Array(b));
       e.target.value = '';
@@ -1403,8 +1401,6 @@ function goToPageNumber(n){
             console.warn('Reading annotation storage failed:', err);
           }
           const storageLookup = storage && typeof storage === 'object' ? storage : {};
-          console.log('[FORM DEBUG] Processing', Object.keys(fieldObjects).length, 'fields');
-          console.log('[FORM DEBUG] Annotation storage:', storage);
           for (const [name, widgets] of Object.entries(fieldObjects)) {
             const field = fieldMap.get(name);
             if (!field) continue;
@@ -1432,7 +1428,6 @@ function goToPageNumber(n){
               if (storageEntry.value !== undefined) value = storageEntry.value;
               else if (storageEntry.valueAsString !== undefined) value = storageEntry.valueAsString;
             }
-            console.log('[FORM DEBUG] Field:', name, '| Type:', field.constructor?.name, '| Storage:', storageEntry, '| DOM:', domState, '| Default value:', value);
             try {
               const ctor = field.constructor?.name;
               // Prefer storage entry over static widget default
@@ -1459,13 +1454,11 @@ function goToPageNumber(n){
                     isOn = false;
                   }
                 }
-                console.log('[FORM DEBUG] Checkbox', name, '| Setting to:', isOn ? 'checked' : 'unchecked', '| exportVal:', exportVal);
                 if (isOn) field.check(); else field.uncheck();
               } else if (typeof field.select === 'function') {
                 // This is a dropdown, option list, or radio group
                 const domVal = domState?.value;
                 const v = domVal ?? entry.value ?? entry.valueAsString ?? value;
-                console.log('[FORM DEBUG] Dropdown/Radio/List', name, '| Setting to:', v);
                 if (Array.isArray(v)) {
                   field.select(...v.map(x => String(x)));
                 } else if (typeof v === 'string') {
@@ -1672,7 +1665,7 @@ function goToPageNumber(n){
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'annotated.pdf';
+        a.download = currentPdfFilename;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 0);
       } catch (err) {
@@ -3067,6 +3060,18 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
           }
           const buf = await res.arrayBuffer();
           bytes = new Uint8Array(buf);
+        }
+
+        // Extract filename from URL
+        try {
+          const urlObj = new URL(sourceUrl);
+          const pathname = urlObj.pathname;
+          const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+          if (filename && filename.endsWith('.pdf')) {
+            currentPdfFilename = decodeURIComponent(filename);
+          }
+        } catch (err) {
+          // If URL parsing fails, keep default filename
         }
 
         await loadPdfBytesArray(bytes);
