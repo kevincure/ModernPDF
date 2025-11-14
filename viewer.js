@@ -1598,9 +1598,15 @@ function goToPageNumber(n){
 
               // If any refs were marked for deletion, rebuild the Annots array
               if (refsToDel.size > 0) {
+                console.log('[DELETE DEBUG] Annots BEFORE deletion:', annotsArray.toString());
                 const newAnnotsArray = doc.context.obj(refsToKeep);
                 page.node.set(N.of('Annots'), newAnnotsArray);
+                console.log('[DELETE DEBUG] Annots AFTER deletion:', newAnnotsArray.toString());
                 console.log('[DELETE DEBUG] Updated page Annots array');
+
+                // Verify the change stuck
+                const verifyArray = page.node.get(N.of('Annots'));
+                console.log('[DELETE DEBUG] Verification - page Annots is now:', verifyArray.toString());
               }
             }
 
@@ -1684,6 +1690,7 @@ function goToPageNumber(n){
               let rootRef = null;
 
               const annotsArray = getAnnotsArray(page);
+              console.log('[DELETE DEBUG] Current Annots array when processing comment', a.id, ':', annotsArray.toString());
 
               if (a.origin === 'pdf') {
                 console.log('[DELETE DEBUG] Comment has origin=pdf, looking for original annotation at:', rootTarget);
@@ -1718,10 +1725,12 @@ function goToPageNumber(n){
                   threadLength: a.thread.length,
                   threadContents: a.thread.map(t => t.text)
                 });
+                console.log('[DELETE DEBUG] Annots array BEFORE creating root:', annotsArray.toString());
                 const root = a.thread[0];
                 rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
-                console.log('[DELETE DEBUG] Created root annotation');
+                console.log('[DELETE DEBUG] Created root annotation:', rootRef.toString());
+                console.log('[DELETE DEBUG] Annots array AFTER creating root:', annotsArray.toString());
                 for (let i = 1; i < a.thread.length; i++) {
                   const r = a.thread[i];
                    addReplyAnnot(page, rootRef,
@@ -1735,6 +1744,14 @@ function goToPageNumber(n){
         }
 
         console.log('[SAVE DEBUG] ========== END SAVE PROCESS ==========');
+        console.log('[SAVE DEBUG] Final Annots arrays before saving PDF:');
+        for (let pageIdx = 0; pageIdx < pagesLib.length; pageIdx++) {
+          const page = pagesLib[pageIdx];
+          const annots = page.node.get(N.of('Annots'));
+          if (annots) {
+            console.log(`[SAVE DEBUG] Page ${pageIdx + 1} final Annots:`, annots.toString());
+          }
+        }
 
         const out = await doc.save();
         const bytes = out instanceof Uint8Array ? out : new Uint8Array(out);
