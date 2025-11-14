@@ -2499,6 +2499,11 @@ function goToPageNumber(n){
       const next = ZOOM_STEPS[clamp(i - 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
     }
+    // Purpose: Resets zoom to 100%
+    function performZoomReset() {
+      const base = getBaseScale();
+      setScale(base);
+    }
     if (zoomInBtn) zoomInBtn.onclick = () => performZoomIn();
     if (zoomOutBtn) zoomOutBtn.onclick = () => performZoomOut();
 
@@ -2728,6 +2733,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       }
       if (!editing && e.key === '+') performZoomIn();
       if (!editing && e.key === '-') performZoomOut();
+      if (!editing && e.key === '1') performZoomReset();
 
   if (!editing && (e.key === 't' || e.key === 'T')) {
     e.preventDefault();
@@ -3007,6 +3013,7 @@ document.addEventListener('click', (e) => {
 /* Zoom menu actions (reuse existing controls) */
 document.getElementById('zmIn')?.addEventListener('click', () => { performZoomIn(); hideZoomMenu(); });
 document.getElementById('zmOut')?.addEventListener('click', () => { performZoomOut(); hideZoomMenu(); });
+document.getElementById('zm100')?.addEventListener('click', () => { performZoomReset(); hideZoomMenu(); });
 document.getElementById('zmFit')?.addEventListener('click', () => { fitToAvailableWidth(); hideZoomMenu(); });
 document.getElementById('zmReader')?.addEventListener('click', () => {
   toggleReader();
