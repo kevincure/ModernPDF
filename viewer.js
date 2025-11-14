@@ -1595,12 +1595,26 @@ function goToPageNumber(n){
 
               console.log('[DELETE DEBUG] Total refs to delete:', refsToDel.size);
               console.log('[DELETE DEBUG] Total refs to keep:', refsToKeep.length);
+              console.log('[DELETE DEBUG] Refs to delete:', Array.from(refsToDel).map(r => r.tag));
+              console.log('[DELETE DEBUG] Refs to keep:', refsToKeep.map(r => r.tag));
 
               // If any refs were marked for deletion, rebuild the Annots array
               if (refsToDel.size > 0) {
-                const newAnnotsArray = doc.context.obj(refsToKeep);
-                page.node.set(N.of('Annots'), newAnnotsArray);
-                console.log('[DELETE DEBUG] Updated page Annots array');
+                console.log('[DELETE DEBUG] Current Annots array length:', arr.length);
+
+                // APPROACH 1: Modify the array in place by removing deleted items
+                // Remove items in reverse order to avoid index shifting issues
+                for (let i = arr.length - 1; i >= 0; i--) {
+                  if (refsToDel.has(arr[i])) {
+                    console.log('[DELETE DEBUG] Removing ref at index', i, ':', arr[i].tag);
+                    annotsArray.splice(i, 1);
+                  }
+                }
+
+                // Verify the update
+                const verifyArr = annotsArray.asArray();
+                console.log('[DELETE DEBUG] Updated Annots array length:', verifyArr.length);
+                console.log('[DELETE DEBUG] Updated Annots refs:', verifyArr.map(r => r.tag));
               }
             }
 
