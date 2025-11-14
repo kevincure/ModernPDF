@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Local PDF Viewer",
+  "name": "ModernPDF",
   "version": "1.0.0",
   "description": "Intercepts PDFs and opens them in a custom viewer.",
   "background": {
@@ -33,7 +33,7 @@
     }
   ],
   "action": {
-    "default_title": "Local PDF Viewer"
+    "default_title": "ModernPDF"
   },
   "web_accessible_resources": [
     {

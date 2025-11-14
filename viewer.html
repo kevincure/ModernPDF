@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Modern PDF - Kevin Bryan</title>
+  <title>ModernPDF</title>
 
 <style>
   :root {
     --font-serif: 'Times New Roman', 'Times', serif;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --bg-color: #fffff8;
+    --bg-color: #faf8f4;
     --text-color: #1a1a1a;
     --border-color: #d4d4d4;
     --editor-accent-color: #111111;
@@ -107,9 +107,7 @@
   }
 
   .header.tool-mode {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.92);
+    /* Removed rounded corner box styling */
   }
 
   .reader .header {
@@ -711,14 +709,14 @@
 
   .search-highlight {
     position: absolute;
-    background: rgba(255, 255, 0, 0.4);
+    background: rgba(255, 192, 203, 0.5);
     border-radius: 2px;
     pointer-events: none;
     transition: background .15s;
   }
 
   .search-highlight.current-match {
-    background: rgba(255, 165, 0, 0.6);
+    background: rgba(255, 105, 180, 0.6);
     box-shadow: 0 0 4px rgba(0, 0, 0, .5);
   }
 
@@ -1114,7 +1112,7 @@
     </div>
   </div>
 
-  <div class="reader-hint">Reader mode · ↑/↓ scroll · 'r' to exit</div>
+  <div class="reader-hint">Reader mode · ↑/↓ scroll · 'r' to toggle</div>
 
   <aside id="commentSidebar">
     <div class="cs-thread" id="csThread"></div>
@@ -1132,20 +1130,20 @@
   <div id="helpModal" class="help-modal hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="help-card">
       <header class="help-header">
-        <h2 id="helpTitle">Modern PDF</h2>
+        <h2 id="helpTitle">ModernPDF</h2>
         <button id="helpClose" class="mini-btn" title="Close help">
           <img src="icons/xmark.svg" class="icon-svg">
         </button>
       </header>
 <div class="help-body">
-  <strong>"Lightweight PDF view/edit"</strong> (October 2025)
+  <strong>"Lightweight PDF view/edit"</strong> (November 2025)
   <p>Created by <strong>Kevin Bryan</strong><br>
   Associate Professor of Strategic Management, University of Toronto<br>
   Co-founder, All Day TA</p>
   <h3>Navigation</h3>
   <ul>
     <li>Zoom with +/-</li>
-    <li><strong>R:</strong> Toggle full-screen reader</li>
+    <li><strong>r:</strong> Toggle full-screen reader</li>
     <li><strong>W:</strong> Fit width</li>
   </ul>
   <h3>Tools</h3>
