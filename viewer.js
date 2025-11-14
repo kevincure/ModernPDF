@@ -82,6 +82,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
       setHash() {},
       addLinkAttributes(element, data) {
         if (!element) return;
+        console.log('[LINK DEBUG] Adding link attributes to element:', {
+          tagName: element.tagName,
+          className: element.className,
+          hasUrl: !!data?.url,
+          hasDest: !!data?.dest,
+          url: data?.url,
+          dest: data?.dest
+        });
         const service = this;
         if (data?.url) {
           element.href = data.url;
@@ -89,18 +97,26 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
           element.rel = this.externalLinkRel;
           element.dataset.pdfExternalUrl = data.url;
           delete element.dataset.pdfDest;
+          console.log('[LINK DEBUG] Set as external link:', data.url);
         } else if (data?.dest) {
           element.dataset.pdfDest = JSON.stringify(data.dest);
           element.href = this.getAnchorUrl(this.getDestinationHash(data.dest));
           delete element.dataset.pdfExternalUrl;
+          console.log('[LINK DEBUG] Set as internal link:', data.dest);
         }
         if (!element.dataset.pdfLinkBound) {
           element.dataset.pdfLinkBound = '1';
           element.addEventListener('click', (ev) => {
+            console.log('[LINK CLICK] Link clicked!', {
+              external: element.dataset.pdfExternalUrl,
+              dest: element.dataset.pdfDest,
+              event: ev
+            });
             const external = element.dataset.pdfExternalUrl;
             const destJson = element.dataset.pdfDest;
             if (external) {
               ev.preventDefault();
+              console.log('[LINK CLICK] Opening external URL:', external);
               window.open(external, '_blank', 'noopener,noreferrer');
               return;
             }
@@ -112,26 +128,40 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
               } catch (_) {
                 // ignore parse errors, fall back to raw string
               }
+              console.log('[LINK CLICK] Navigating to internal destination:', destVal);
               service.navigateTo(destVal);
             }
           });
+          console.log('[LINK DEBUG] Click handler attached to link');
         }
       },
       goToDestination(dest) {
-        if (!pdfDoc) return;
+        console.log('[LINK NAV] goToDestination called with:', dest);
+        if (!pdfDoc) {
+          console.warn('[LINK NAV] No PDF document loaded!');
+          return;
+        }
         (async () => {
           try {
+            console.log('[LINK NAV] Getting destination from PDF...');
             const explicitDest = await pdfDoc.getDestination(dest);
-            if (!explicitDest) return;
+            console.log('[LINK NAV] Explicit destination:', explicitDest);
+            if (!explicitDest) {
+              console.warn('[LINK NAV] No explicit destination found for:', dest);
+              return;
+            }
             const ref = explicitDest[0];
+            console.log('[LINK NAV] Getting page index for ref:', ref);
             const pageIndex = await pdfDoc.getPageIndex(ref);
+            console.log('[LINK NAV] Navigating to page:', pageIndex + 1);
             goToPageNumber(pageIndex + 1);
           } catch (err) {
-            console.warn('Failed to follow destination', err);
+            console.warn('[LINK NAV] Failed to follow destination', err);
           }
         })();
       },
       navigateTo(dest) {
+        console.log('[LINK NAV] navigateTo called with:', dest);
         this.goToDestination(dest);
       }
     };
