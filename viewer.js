@@ -1542,21 +1542,21 @@ function goToPageNumber(n){
               // Now find all replies to that root
               for (const ref of arr) {
                 if (ref === rootRefToDel) continue; // Already in del set
-                
+
                 const dict = doc.context.lookup(ref);
                 const irt = dict?.get(N.of('IRT'));
-                
+
                 if (irt === rootRefToDel) {
                   refsToDel.add(ref); // Delete replies too
                 } else {
                   refsToKeep.push(ref);
                 }
               }
-              
-              // If any refs were marked for deletion, rebuild the Annots array
+
+              // If any refs were marked for deletion, create a new Annots array
               if (refsToDel.size > 0) {
-                annotsArray.clear();
-                refsToKeep.forEach(r => annotsArray.push(r));
+                const newAnnotsArray = doc.context.obj(refsToKeep);
+                page.node.set(N.of('Annots'), newAnnotsArray);
               }
             }
 
@@ -2322,22 +2322,19 @@ function goToPageNumber(n){
       const { anno, pageNum } = openCommentTarget;
     
       if (Number.isInteger(i) && anno.thread && anno.thread[i]) {
-        
-        // Check if we are deleting an *imported* reply
+
+        // Check if we are deleting an *imported* comment/reply
         if (anno.origin === 'pdf' && i < (anno._importedCount || 0)) {
           // Mark the root thread for deletion from the original PDF
           markPdfThreadForDeletion(anno);
-        }
-    
-        anno.thread.splice(i, 1);
 
-        // If it was an imported thread and we modified it, convert to a 'user' thread
-        // This ensures it gets fully re-written on save, not just appended to
-        if (anno.origin === 'pdf') {
-          anno.origin = 'user'; // Convert to a user thread
-          anno._importedCount = 0; // It will now be saved from scratch
+          // Convert to a 'user' thread so it gets fully re-written on save
+          anno.origin = 'user';
+          anno._importedCount = 0;
           delete anno.pdfRect;
         }
+
+        anno.thread.splice(i, 1);
 
         normalizeCommentAnnotation(anno);
 
