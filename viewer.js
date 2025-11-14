@@ -271,12 +271,28 @@ const leftBar = document.getElementById('leftBar');
     }
 
     function markPdfThreadForDeletion(anno) {
-      if (!anno || anno.type !== 'comment' || anno.origin !== 'pdf') return;
-      deletedPdfThreads.push({
+      if (!anno || anno.type !== 'comment' || anno.origin !== 'pdf') {
+        console.log('[markPdfThreadForDeletion DEBUG] Skipping - invalid anno or not pdf origin:', {
+          hasAnno: !!anno,
+          type: anno?.type,
+          origin: anno?.origin
+        });
+        return;
+      }
+      const deleteEntry = {
         page: anno.page,
         x: anno.x,
         y: anno.y,
         rect: clonePdfRect(anno.pdfRect)
+      };
+      deletedPdfThreads.push(deleteEntry);
+      console.log('[markPdfThreadForDeletion DEBUG] Marked ENTIRE thread for deletion:', {
+        page: deleteEntry.page,
+        x: deleteEntry.x,
+        y: deleteEntry.y,
+        rect: deleteEntry.rect,
+        annoId: anno.id,
+        threadLength: anno.thread?.length
       });
     }
 
@@ -1489,6 +1505,20 @@ function goToPageNumber(n){
         commitPdfJsFormEdits();
         await applyFormValues(doc);
 
+        // Log all current annotations before processing deletions
+        console.log('[SAVE DEBUG] ========== START SAVE PROCESS ==========');
+        console.log('[SAVE DEBUG] Current annotations by page:');
+        for (const pageKey in annotations) {
+          const pageAnnos = annotations[pageKey];
+          const comments = pageAnnos?.filter(a => a.type === 'comment') || [];
+          if (comments.length > 0) {
+            console.log(`[SAVE DEBUG] Page ${pageKey} has ${comments.length} comment(s):`);
+            comments.forEach((c, idx) => {
+              console.log(`[SAVE DEBUG]   ${idx + 1}. id=${c.id}, origin=${c.origin}, threadLen=${c.thread?.length}, _importedCount=${c._importedCount}`);
+            });
+          }
+        }
+
         // Process deleted PDF threads
         console.log('[DELETE DEBUG] deletedPdfThreads:', deletedPdfThreads);
         const uniqueDeletes = new Map();
@@ -1657,6 +1687,7 @@ function goToPageNumber(n){
 
               if (a.origin === 'pdf') {
                 console.log('[DELETE DEBUG] Comment has origin=pdf, looking for original annotation at:', rootTarget);
+                console.log('[DELETE DEBUG] Comment thread:', a.thread.map((t, i) => `${i}: ${t.text} (imported: ${t.imported})`));
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, rootTarget, 6) || null;
                 console.log('[DELETE DEBUG] Found rootRef:', rootRef);
                 if (!rootRef) {
@@ -1668,29 +1699,42 @@ function goToPageNumber(n){
                   continue;
                 }
                 const start = Math.max((a._importedCount | 0), 1);
-                console.log('[DELETE DEBUG] Adding replies starting from index', start, 'out of', a.thread.length);
+                console.log('[DELETE DEBUG] _importedCount:', a._importedCount);
+                console.log('[DELETE DEBUG] Adding NEW replies starting from index', start, 'out of', a.thread.length);
+                console.log('[DELETE DEBUG] This means existing PDF annotations at index 0 to', start - 1, 'will be kept as-is');
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
-                  console.log('[DELETE DEBUG] Adding reply:', r.text);
+                  console.log('[DELETE DEBUG] Adding NEW reply at index', i, ':', r.text);
                   addReplyAnnot(page, rootRef,
                     rootX + 6 * i, rootY - 6 * i, 24, 24,
                     String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
                 console.log('[DELETE DEBUG] Comment has origin=' + a.origin + ', creating new thread');
+                console.log('[DELETE DEBUG] ⚠️ CREATING NEW PDF ANNOTATIONS - This may cause duplicates!');
+                console.log('[DELETE DEBUG] Comment details:', {
+                  id: a.id,
+                  page: a.page,
+                  threadLength: a.thread.length,
+                  threadContents: a.thread.map(t => t.text)
+                });
                 const root = a.thread[0];
                 rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
+                console.log('[DELETE DEBUG] Created root annotation');
                 for (let i = 1; i < a.thread.length; i++) {
                   const r = a.thread[i];
                    addReplyAnnot(page, rootRef,
                     rootX + 6*i, rootY - 6*i, 24, 24,
                     String(r.text||''), String(r.author || userName || 'User'));
+                  console.log('[DELETE DEBUG] Created reply annotation:', r.text);
                 }
               }
             }
           }
         }
+
+        console.log('[SAVE DEBUG] ========== END SAVE PROCESS ==========');
 
         const out = await doc.save();
         const bytes = out instanceof Uint8Array ? out : new Uint8Array(out);
@@ -2345,26 +2389,48 @@ function goToPageNumber(n){
     cs.thread.addEventListener('click', (e)=>{
       const btn = e.target.closest('.cs-del');
       if (!btn || !openCommentTarget) return;
-    
+
       const i = parseInt(btn.dataset.index, 10);
       const { anno, pageNum } = openCommentTarget;
-    
+
       if (Number.isInteger(i) && anno.thread && anno.thread[i]) {
+        console.log('[DELETE-HANDLER DEBUG] Deleting item at index:', i);
+        console.log('[DELETE-HANDLER DEBUG] Thread before deletion:', JSON.parse(JSON.stringify(anno.thread)));
+        console.log('[DELETE-HANDLER DEBUG] Anno before deletion:', {
+          id: anno.id,
+          origin: anno.origin,
+          _importedCount: anno._importedCount,
+          page: anno.page,
+          threadLength: anno.thread.length
+        });
 
         // Check if we are deleting an *imported* comment/reply
         if (anno.origin === 'pdf' && i < (anno._importedCount || 0)) {
+          console.log('[DELETE-HANDLER DEBUG] Deleting imported item at index:', i);
+          console.log('[DELETE-HANDLER DEBUG] Is root comment (i===0):', i === 0);
+          console.log('[DELETE-HANDLER DEBUG] Is reply (i>0):', i > 0);
+
           // Mark the root thread for deletion from the original PDF
           markPdfThreadForDeletion(anno);
+          console.log('[DELETE-HANDLER DEBUG] Called markPdfThreadForDeletion - ENTIRE thread marked for PDF deletion');
 
           // Convert to a 'user' thread so it gets fully re-written on save
           anno.origin = 'user';
           anno._importedCount = 0;
           delete anno.pdfRect;
+          console.log('[DELETE-HANDLER DEBUG] Changed origin to "user" - will create NEW annotations on save');
         }
 
         anno.thread.splice(i, 1);
+        console.log('[DELETE-HANDLER DEBUG] Thread after splice:', JSON.parse(JSON.stringify(anno.thread)));
 
         normalizeCommentAnnotation(anno);
+        console.log('[DELETE-HANDLER DEBUG] Anno after normalization:', {
+          id: anno.id,
+          origin: anno.origin,
+          _importedCount: anno._importedCount,
+          threadLength: anno.thread.length
+        });
 
         if (!anno.thread.length) {
           const pinEl = pagesEl.querySelector(`.comment-pin[data-id="${anno.id}"]`);
