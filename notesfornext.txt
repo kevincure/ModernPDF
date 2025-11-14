@@ -1,4 +1,0 @@
-TO FIX 11/6/2025
-1) deleted comments not handled correctly
-2) i just want my "blue comment" icon. if i load in a pdf with existing comment strings, i also get the colored pdf.js native (?) comment icons, not clickable but still, it looks wrong. 
-3) for forms, i can fill everything in, but checkboxes/drop-downs/etc. dont' save state when i download and then reopen somwhere, plus when it reopen it "renders" the text i nthose boxes "twice". i imagine this is probably aslo coming from pdfjs?

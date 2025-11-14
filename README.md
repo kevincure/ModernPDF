@@ -1,4 +1,4 @@
-# Minimal PDF Viewer
+# ModernPDF
 
 This project is a lightweight PDF reader that supports just enough annotation tools for quick markups. Load a document, drop text or comment pins, reuse a stored signature, and export an updated copy — all without extra chrome.
 

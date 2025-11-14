@@ -26,6 +26,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     const MAX_SCALE = ZOOM_STEPS[ZOOM_STEPS.length - 1];
     const PRINT_RESOLUTION = 150;
     const PRINT_UNITS = PRINT_RESOLUTION / 72;
+    // Magic numbers moved to top for clarity
+    const PIN_SIZE = 28; // Comment pin width/height in pixels
+    const PAGE_WINDOW_SPAN = 50; // Number of pages to render around current page
+    const SCROLL_THROTTLE_MS = 90; // Milliseconds to throttle scroll events
     let readerMode = false, readerPrevScale = 1, currentPageIndex = 0;
     let dpr = window.devicePixelRatio || 1;
 
@@ -52,6 +56,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
     const deletedPdfThreads = [];
     let currentPdfFilename = 'annotated.pdf';
 
+    // Purpose: Get DOM element by its ID
     const el = (id) => document.getElementById(id);
     const pagesEl = el('pages'), mainEl = el('main');
     let printContainer = el('printContainer');
@@ -155,6 +160,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
 
 const leftBar = document.getElementById('leftBar');
 
+    // Purpose: Ensures load error DOM elements are initialized and cached
     function ensureLoadErrorElements() {
       if (!loadErrorBanner) {
         loadErrorBanner = document.getElementById('loadErrorBanner');
@@ -170,6 +176,7 @@ const leftBar = document.getElementById('leftBar');
       }
     }
 
+    // Purpose: Hides the load error banner and resets its state
     function hideLoadError() {
       ensureLoadErrorElements();
       pendingLoadError = null;
@@ -183,6 +190,7 @@ const leftBar = document.getElementById('leftBar');
       }
     }
 
+    // Purpose: Displays the load error banner with a message and optional source URL
     function showLoadError(message, sourceUrl) {
       ensureLoadErrorElements();
       if (!loadErrorBanner || !loadErrorMessage) {
@@ -216,6 +224,7 @@ const leftBar = document.getElementById('leftBar');
       loadErrorBanner.classList.remove('hidden');
     }
 
+    // Purpose: Sends a message to Chrome extension runtime and returns a promise
     function sendRuntimeMessage(message) {
       return new Promise((resolve, reject) => {
         if (!chrome.runtime?.sendMessage) {
@@ -237,6 +246,7 @@ const leftBar = document.getElementById('leftBar');
       });
     }
 
+    // Purpose: Normalizes PDF source URLs (e.g., converts Dropbox links to direct download)
     function normalizePdfSourceUrl(url) {
       if (!url) return url;
       try {
@@ -253,6 +263,7 @@ const leftBar = document.getElementById('leftBar');
       return url;
     }
 
+    // Purpose: Creates a validated deep clone of a PDF rectangle object
     function clonePdfRect(rect) {
       if (!rect) return null;
       const left = Number(rect.left);
@@ -270,6 +281,7 @@ const leftBar = document.getElementById('leftBar');
       return { left, right, top, bottom };
     }
 
+    // Purpose: Marks a PDF comment thread for deletion on save
     function markPdfThreadForDeletion(anno) {
       if (!anno || anno.type !== 'comment' || anno.origin !== 'pdf') return;
       deletedPdfThreads.push({
@@ -280,6 +292,7 @@ const leftBar = document.getElementById('leftBar');
       });
     }
 
+    // Purpose: Safely escapes strings for use in CSS selectors
     function safeCssEscape(value) {
       if (typeof value !== 'string') value = String(value ?? '');
       if (window.CSS?.escape) return window.CSS.escape(value);
@@ -289,6 +302,7 @@ const leftBar = document.getElementById('leftBar');
       });
     }
 
+    // Purpose: Reads the current state of a PDF form widget from the DOM
     function readWidgetDomState(widgetId) {
       if (!widgetId) return null;
       try {
@@ -318,6 +332,7 @@ const leftBar = document.getElementById('leftBar');
       }
     }
 
+    // Purpose: Commits pending PDF.js form field edits by blurring the active field
     function commitPdfJsFormEdits() {
       const active = document.activeElement;
       if (active && typeof active.blur === 'function' && active.closest('.pdf-annotation-layer')) {
@@ -327,6 +342,7 @@ const leftBar = document.getElementById('leftBar');
       }
     }
 
+    // Purpose: Attaches click handler to copy PDF URL button in error banner
     function attachLoadErrorCopyHandler() {
       ensureLoadErrorElements();
       if (!loadErrorCopy || loadErrorCopy.dataset.handlerAttached === '1') {
@@ -352,6 +368,7 @@ const leftBar = document.getElementById('leftBar');
     attachLoadErrorCopyHandler();
     document.addEventListener('DOMContentLoaded', attachLoadErrorCopyHandler, { once: true });
 
+    // Purpose: Sets the control width CSS variable based on leftBar dimensions
     function setControlWidth() {
       const lb = leftBar?.getBoundingClientRect();
 
@@ -373,7 +390,7 @@ const leftBar = document.getElementById('leftBar');
       document.documentElement.style.setProperty('--control-width', `${w}px`);
     }
 
-    const fileInput = el('file'), saveBtn = el('saveBtn');
+    const saveBtn = el('saveBtn');
     const identityBtn = el('identityBtn'), textTool = el('textTool'), commentTool = el('commentTool'), signatureTool = el('signatureTool');
     const selectTextTool = el('selectTextTool');
     const zoomOutBtn = el('zoomOutBtn'), zoomInBtn = el('zoomInBtn'), fitWidthBtn = el('fitWidthBtn'), toggleReaderBtn = el('toggleReaderBtn');
@@ -412,18 +429,21 @@ const leftBar = document.getElementById('leftBar');
           searchNextBtn = el('searchNextBtn'),
           searchStatus = el('searchStatus');
 
+    // Purpose: Clamps a value between minimum and maximum bounds
     function clamp(i, min, max) {
       return Math.max(min, Math.min(max, i));
     }
 
+// Purpose: Calculates the range of pages to render around the center page
 function pageWindow(centerIndex){
   if(!pdfDoc) return [1,1];
   const pc = pdfDoc.numPages;
   const p = clamp(centerIndex+1, 1, pc); // 1-based page number
-  const SPAN = 50; // how many pages around current to render
+  const SPAN = PAGE_WINDOW_SPAN; // how many pages around current to render
   return [Math.max(1, p-SPAN), Math.min(pc, p+SPAN)];
 }
 
+// Purpose: Renders only the pages within the window around the current page
 async function renderWindowAroundCurrent(){
   if(!pdfDoc) return;
   const [start, end] = pageWindow(currentPageIndex);
@@ -448,7 +468,7 @@ async function renderWindowAroundCurrent(){
   await Promise.all(tasks);
 }
 
-// Track the most-visible page while scrolling and keep the window rendered
+// Purpose: Updates current page index based on scroll position
 function updateCurrentPageFromScroll(){
   if(!pdfDoc) return;
   const wraps = pagesEl.querySelectorAll('.page');
@@ -470,24 +490,41 @@ function updateCurrentPageFromScroll(){
   renderWindowAroundCurrent();
 }
 
-// Lightly throttle the scroll-driven updates
+// Consolidated scroll event handler (combines page updates, text toolbar positioning, and scrolling class)
+// Replaces 3 separate mainEl scroll listeners that were scattered throughout the code
 let visTimer = null;
 mainEl.addEventListener('scroll', ()=>{
+  // Update current page indicator (throttled)
   if (visTimer) clearTimeout(visTimer);
-  visTimer = setTimeout(updateCurrentPageFromScroll, 90);
+  visTimer = setTimeout(updateCurrentPageFromScroll, SCROLL_THROTTLE_MS);
+
+  // Reposition text toolbar if active (was separate listener at ~line 2966)
+  if (typeof textToolbarTarget !== 'undefined' && textToolbarTarget) {
+    positionTextToolbar(textToolbarTarget);
+  }
+
+  // Add is-scrolling class for UI hiding during scroll (was separate listener at ~line 2970)
+  mainEl.classList.add('is-scrolling');
+  if (scrollTimer) clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(() => {
+    mainEl.classList.remove('is-scrolling');
+  }, 150);
 }, { passive: true });
 
 
+    // Purpose: Returns the base zoom scale, defaulting to 1 if invalid
     function getBaseScale() {
       const base = defaultWidthScale || 1;
       return base > 0 ? base : 1;
     }
 
+    // Purpose: Converts absolute scale to relative scale ratio
     function getRelativeScale(scale = currentScale) {
       const base = getBaseScale();
       return clamp(scale / base, ZOOM_STEPS[0], ZOOM_STEPS[ZOOM_STEPS.length - 1]);
     }
 
+    // Purpose: Finds the nearest zoom step index for a given relative scale ratio
     function snapIndexFromRelative(ratio) {
       let best = 0, d = 1e9;
       for (let i = 0; i < ZOOM_STEPS.length; i++) {
@@ -500,6 +537,7 @@ mainEl.addEventListener('scroll', ()=>{
       return best;
     }
 
+    // Purpose: Calculates the main content area dimensions excluding padding
     function getMainContentSize() {
       const s = getComputedStyle(mainEl);
       const padX = parseFloat(s.paddingLeft || '0') + parseFloat(s.paddingRight || '0');
@@ -510,6 +548,7 @@ mainEl.addEventListener('scroll', ()=>{
       };
     }
 
+    // Purpose: Computes the optimal scale to fit the current page in reader mode
     async function computeReaderFitScale() {
       if (!pdfDoc) return currentScale;
       const p = await pdfDoc.getPage(clamp(currentPageIndex + 1, 1, pdfDoc.numPages));
@@ -519,6 +558,7 @@ mainEl.addEventListener('scroll', ()=>{
       return clamp(Math.min(w / vp.width, h / vp.height), MIN_SCALE, MAX_SCALE);
     }
 
+    // Purpose: Sets the current annotation tool and updates UI state
     function setTool(name) {
       currentTool = name;
       [textTool, commentTool, signatureTool, selectTextTool].forEach(b => b && b.classList.remove('active'));
@@ -533,6 +573,7 @@ mainEl.addEventListener('scroll', ()=>{
       setControlWidth(); // Re-calculate padding and visibility
     }
 
+    // Purpose: Updates the mode indicator text and styling
     function updateModeIndicator() {
       if (!modeIndicator) return;
       const label = TOOL_LABELS[currentTool] || TOOL_LABELS.select;
@@ -543,10 +584,12 @@ mainEl.addEventListener('scroll', ()=>{
     updateModeIndicator();
     setControlWidth();
 
+    // Purpose: Updates the user identity display in the comment sidebar
     function updateIdentityDisplay() {
       if (cs.authorName) cs.authorName.textContent = userName || 'Set name';
     }
 
+    // Purpose: Updates toolbar button states and titles
     function updateToolbarStates() {
       if (saveBtn) saveBtn.disabled = !pdfDoc;
       if (toggleReaderBtn) toggleReaderBtn.classList.toggle('active', readerMode);
@@ -554,6 +597,7 @@ mainEl.addEventListener('scroll', ()=>{
     }
 
 
+    // Purpose: Updates layer interaction modes based on current tool
     function updateInteractionModes() {
       const selecting = currentTool === 'selectText';
       const toolActive  = (currentTool === 'textOnce' ||
@@ -576,12 +620,14 @@ mainEl.addEventListener('scroll', ()=>{
       if (selecting) renderTextLayersForAll();
     }
 
+    // Purpose: Sets the currently selected annotation element
     function setSelectedAnnotation(el) {
       if (selectedAnnoEl && selectedAnnoEl !== el) selectedAnnoEl.classList.remove('selected');
       selectedAnnoEl = el || null;
       if (selectedAnnoEl) selectedAnnoEl.classList.add('selected');
     }
 
+    // Purpose: Converts hex color code to RGB object with normalized values
     function toRgb(hex) {
       const r = parseInt(hex.substr(1, 2), 16) / 255,
             g = parseInt(hex.substr(3, 2), 16) / 255,
@@ -589,6 +635,7 @@ mainEl.addEventListener('scroll', ()=>{
       return { r, g, b };
     }
 
+    // Purpose: Escapes HTML special characters to prevent XSS
     function escapeHtml(str) {
       return String(str ?? '')
         .replace(/&/g, '&amp;')
@@ -596,6 +643,7 @@ mainEl.addEventListener('scroll', ()=>{
         .replace(/>/g, '&gt;');
     }
 
+    // Purpose: Creates or retrieves a page slot with canvas and layers for the given page number
     function ensurePageSlot(num) {
       let slot = pages[num - 1];
       if (slot) return slot;
@@ -637,6 +685,7 @@ mainEl.addEventListener('scroll', ()=>{
       return slot;
     }
 
+    // Purpose: Cancels all active page rendering tasks
     function cancelAllPageRenders() {
       pages.forEach(s => {
         if (s && s.renderTask) {
@@ -657,6 +706,7 @@ mainEl.addEventListener('scroll', ()=>{
       });
     }
 
+// Purpose: Navigates to a specific page number
 function goToPageNumber(n){
   if(!pdfDoc) return;
   currentPageIndex = clamp(n-1, 0, pdfDoc.numPages-1);
@@ -671,6 +721,7 @@ function goToPageNumber(n){
   renderWindowAroundCurrent();
 }
 
+    // Purpose: Synchronizes PDF annotation layer transform with viewport
     function syncPdfLayerTransform(slot, viewport) {
       if (!slot?.pdfLayer) return;
       const width = viewport?.width ?? ((slot.baseW || 0) * currentScale);
@@ -683,6 +734,7 @@ function goToPageNumber(n){
       slot.pdfLayer.style.transform = '';
     }
 
+    // Purpose: Renders a single PDF page to canvas with annotations
     async function renderPage(num) {
       const page = await pdfDoc.getPage(num);
       const base = page.getViewport({ scale: 1 });
@@ -744,6 +796,7 @@ function goToPageNumber(n){
       await renderPdfAnnotations(slot, page, viewport);
     }
 
+    // Purpose: Renders the text selection layer for a page
     async function renderTextLayer(num) {
       const slot = ensurePageSlot(num);
       if (!slot.textLayer) return;
@@ -764,6 +817,7 @@ function goToPageNumber(n){
       await task.promise;
     }
 
+    // Purpose: Renders PDF.js native annotations (forms, links, etc.) for a page
     async function renderPdfAnnotations(slot, page, viewport) {
       if (!slot.pdfLayer) return;
       slot.pdfRenderToken++;
@@ -842,6 +896,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Renders text selection layers for all pages in the document
     async function renderTextLayersForAll() {
       if (!pdfDoc) return;
       for (let i = 1; i <= pdfDoc.numPages; i++) {
@@ -849,6 +904,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Re-renders all pages and annotations after scale or state changes
     async function renderAll() {
       if (isRendering) {
         rerenderQueued = true;
@@ -896,6 +952,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Restores annotations from state to the DOM after re-render
     function rehydrateAnnotations() {
       if (!pdfDoc) return;
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
@@ -910,6 +967,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Extracts author name from a PDF annotation object
     function getAuthor(an) {
       return (
         (an.title && an.title.trim()) ||
@@ -919,6 +977,7 @@ function goToPageNumber(n){
       );
     }
 
+    // Purpose: Imports existing comment annotations from the PDF document
     async function importPdfComments() {
       if (!pdfDoc) return;
 
@@ -1034,6 +1093,7 @@ function goToPageNumber(n){
       nextAnnoId = maxId;
     }
 
+    // Purpose: Clears search results and resets search UI state
     function clearSearch() {
       searchResults.forEach(res => res.element?.remove());
       searchResults = [];
@@ -1047,6 +1107,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Updates the active search highlight and scrolls to it
     function updateActiveHighlight() {
       const hasResults = searchResults.length > 0;
       searchNextBtn.disabled = !hasResults;
@@ -1071,6 +1132,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Performs text search across all pages and highlights matches
     async function performSearch() {
       if (!pdfDoc) return;
       const query = (searchInput.value || '').trim().toLowerCase();
@@ -1123,6 +1185,7 @@ function goToPageNumber(n){
       searchDirty = false;
     }
 
+    // Purpose: Loads a PDF from byte array and initializes the viewer
     async function loadPdfBytesArray(buf) {
       const data = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
       const stable = data.slice ? data.slice() : new Uint8Array(data);
@@ -1175,15 +1238,9 @@ function goToPageNumber(n){
       }
     }
 
-    if (fileInput) fileInput.onchange = async (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      currentPdfFilename = f.name;
-      const b = await f.arrayBuffer();
-      await loadPdfBytesArray(new Uint8Array(b));
-      e.target.value = '';
-    };
+    // Legacy file input code removed - PDFs are now loaded via extension interception
 
+    // Purpose: Maps font family, weight, and style to PDFLib standard font name
     function fontKeyFor(f, w, s) {
       const fam = /times/i.test(f || '') ? 'Times' : (/courier/i.test(f || '') ? 'Courier' : 'Helvetica');
       const bold = String(w || '').toLowerCase() === 'bold';
@@ -1206,6 +1263,7 @@ function goToPageNumber(n){
       return 'Courier';
     }
 
+    // Purpose: Wraps text into lines that fit within a maximum width
     function wrapLines(text, pdfFont, size, maxWidth) {
       const paras = (text || '').replace(/\r\n/g, '\n').split('\n');
       const out = [];
@@ -1234,7 +1292,7 @@ function goToPageNumber(n){
       }
 
 
-      // Helper: find nearest existing Text annotation to use as IRT
+      // Purpose: Finds the nearest existing Text annotation reference for comment threading
       function findNearestTextAnnotRef(doc, annotsArray, target, tol = 32) {
           try {
             const N = PDFLib.PDFName;
@@ -1310,6 +1368,7 @@ function goToPageNumber(n){
         const N = PDFLib.PDFName, S = PDFLib.PDFString, Num = PDFLib.PDFNumber;
 
         const fontCache = {};
+        // Purpose: Ensures a font is embedded in the PDF document, with caching
         const ensureFont = async (name) => {
           if (fontCache[name]) return fontCache[name];
           const f = await doc.embedFont(PDFLib.StandardFonts[name]);
@@ -1317,6 +1376,7 @@ function goToPageNumber(n){
           return f;
         };
 
+        // Purpose: Gets or creates the Annots array for a PDF page
         const getAnnotsArray = (page) => {
           let arr = page.node.lookup(N.of('Annots'));
           if (!arr) {
@@ -1326,6 +1386,7 @@ function goToPageNumber(n){
           return arr;
         };
 
+        // Purpose: Adds a Text annotation (sticky note) to a PDF page
         const addTextAnnot = (page, x, y, w, h, contents, author) => {
           const rect = doc.context.obj([Num.of(x), Num.of(y), Num.of(x + w), Num.of(y + h)]);
           const annot = doc.context.obj({
@@ -1344,6 +1405,7 @@ function goToPageNumber(n){
           return ref;
         };
 
+        // Purpose: Adds a reply annotation to an existing comment thread
         const addReplyAnnot = (page, parentRef, x, y, w, h, contents, author) => {
           const rect = doc.context.obj([Num.of(x), Num.of(y), Num.of(x + w), Num.of(y + h)]);
           const annot = doc.context.obj({
@@ -1366,6 +1428,7 @@ function goToPageNumber(n){
 
         const pagesLib = doc.getPages();
 
+        // Purpose: Applies PDF form field values from DOM state to the PDF document
         async function applyFormValues(pdfLibDoc) {
           if (!pdfDoc?.annotationStorage || !pdfLibDoc?.getForm) return;
           let form;
@@ -1387,6 +1450,7 @@ function goToPageNumber(n){
           if (!pdfFields?.length) return;
           const fieldMap = new Map(pdfFields.map(f => [f.getName(), f]));
           const domStateCache = new Map();
+          // Purpose: Gets cached DOM state for a widget ID
           const getDomState = (id) => {
             if (!id) return null;
             if (domStateCache.has(id)) return domStateCache.get(id);
@@ -1723,11 +1787,13 @@ function goToPageNumber(n){
       };
     }
 
+    // Purpose: Queues a tool to activate after identity modal is saved
     function queueToolAfterIdentity(toolName) {
       queuedTool = toolName;
       openIdentityModal();
     }
 
+    // Purpose: Opens the identity modal for name and signature input
     function openIdentityModal() {
       identityModal.classList.remove('hidden');
       setTool('select');
@@ -1747,6 +1813,7 @@ function goToPageNumber(n){
       requestAnimationFrame(() => identityName.focus());
     }
 
+    // Purpose: Closes the identity modal and optionally activates queued tool
     function closeIdentityModal(applyQueuedTool = false) {
       identityModal.classList.add('hidden');
       const pending = queuedTool;
@@ -1799,6 +1866,7 @@ function goToPageNumber(n){
       updateActiveHighlight();
     };
 
+    // Purpose: Attaches click event handlers to page layer for annotation tools
     function attachLayerEvents(layer, pageNum) {
       layer.addEventListener('click', (e) => {
         if (e.target !== layer) return;
@@ -1856,6 +1924,7 @@ function goToPageNumber(n){
       });
     }
 
+    // Purpose: Resolves which page element contains a text selection range
     function resolvePageElement(range, rect) {
       const midX = rect.left + rect.width / 2;
       const midY = rect.top + rect.height / 2;
@@ -1875,6 +1944,7 @@ function goToPageNumber(n){
       return null;
     }
 
+    // Purpose: Collects all selection rectangles grouped by page number
     function collectSelectionRects() {
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) return null;
@@ -1902,6 +1972,7 @@ function goToPageNumber(n){
       return map.size ? map : null;
     }
 
+    // Purpose: Creates highlight or strikethrough annotation from text selection
     function applyMarkupFromSelection(type) {
       if (!pdfDoc) return false;
       const rectMap = collectSelectionRects();
@@ -1947,6 +2018,7 @@ function goToPageNumber(n){
       return false;
     }
 
+    // Purpose: Creates and adds an annotation element to the page layer
     function addAnnotationElement(layer, pageNum, anno, opts) {
       const { addToState = false, focus = false } = opts || {};
       const key = String(pageNum);
@@ -2026,7 +2098,7 @@ function goToPageNumber(n){
           openCommentUI(pageNum, anno);
         };
         layer.appendChild(pin);
-        const pinHalf = (pin.offsetWidth || 28) / 2;
+        const pinHalf = (pin.offsetWidth || PIN_SIZE) / 2;
         pin.style.left = (anno.x - pinHalf) + 'px';
         pin.style.top = (anno.y - pinHalf) + 'px';
         makeDraggable(pin, anno, layer, true);
@@ -2107,6 +2179,7 @@ function goToPageNumber(n){
       return null;
     }
 
+    // Purpose: Removes an annotation from the state object
     function removeAnnotationFromState(anno) {
       const key = String(anno.page);
       const list = annotations[key];
@@ -2116,6 +2189,7 @@ function goToPageNumber(n){
       if (!list.length) delete annotations[key];
     }
 
+    // Purpose: Removes an annotation element from DOM and state
     function removeAnnotationElement(el, anno) {
       if (!el) return;
       // If this was an imported PDF comment, remember to delete the original thread on save
@@ -2129,6 +2203,7 @@ function goToPageNumber(n){
       if (anno?.type === 'comment' && openCommentTarget && openCommentTarget.anno === anno) closeCommentUI();
     }
 
+    // Purpose: Makes an annotation element draggable on the page
     function makeDraggable(el, anno, layer, isPin) {
       const isText = el.classList.contains('text-anno');
       const isSignature = el.classList.contains('sig-anno');
@@ -2136,6 +2211,7 @@ function goToPageNumber(n){
       let dragging = false, dragCandidate = false, sx = 0, sy = 0, origL = 0, origT = 0;
 
       const pinHalf = isPin ? (el.offsetWidth / 2 || 11) : 0;
+      // Purpose: Applies new position to element and updates annotation coordinates
       const apply = (L, T) => {
         el.style.left = `${L}px`;
         el.style.top = `${T}px`;
@@ -2199,6 +2275,7 @@ function goToPageNumber(n){
       });
     }
 
+    // Purpose: Makes a signature annotation resizable via drag handle
     function makeResizable(el, handle, anno) {
       if (!handle) return;
       const MIN_W = 60, MIN_H = 24;
@@ -2233,6 +2310,7 @@ function goToPageNumber(n){
       if (selectedAnnoEl) setSelectedAnnotation(null);
     });
 
+    // Purpose: Normalizes and validates a comment annotation thread structure
     function normalizeCommentAnnotation(anno) {
       if (!anno) return anno;
       if (!Array.isArray(anno.thread)) anno.thread = [];
@@ -2260,6 +2338,7 @@ function goToPageNumber(n){
       return anno;
     }
 
+    // Purpose: Renders a comment thread in the comment sidebar
     function renderCommentThread(anno) {
       if (!cs.thread) return;
       cs.thread.innerHTML = '';
@@ -2287,6 +2366,7 @@ function goToPageNumber(n){
       }
     }
 
+    // Purpose: Opens the comment sidebar UI for a specific annotation
     function openCommentUI(pageNum, anno) {
       const normalized = normalizeCommentAnnotation(anno);
       openCommentTarget = { pageNum, anno: normalized };
@@ -2306,6 +2386,7 @@ function goToPageNumber(n){
       cs.text.focus();
     }
 
+    // Purpose: Closes the comment sidebar and removes empty comments
     function closeCommentUI(){
       cs.panel.classList.remove('open');
       if (openCommentTarget) {
@@ -2385,6 +2466,7 @@ function goToPageNumber(n){
       closeCommentUI();
     }, true);
 
+    // Purpose: Computes scale needed to fit page width to a fraction of container
     async function computeWidthScale(fraction = 1) {
       if (!pdfDoc) return currentScale;
       const page = await pdfDoc.getPage(1);
@@ -2395,11 +2477,13 @@ function goToPageNumber(n){
       return clamp(target / vp.width, MIN_SCALE, MAX_SCALE);
     }
 
+    // Purpose: Sets the current zoom scale and triggers re-render
     function setScale(s) {
       currentScale = clamp(s, MIN_SCALE, MAX_SCALE);
       renderAll();
     }
 
+    // Purpose: Zooms in to the next zoom step
     function performZoomIn() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
@@ -2407,6 +2491,7 @@ function goToPageNumber(n){
       const next = ZOOM_STEPS[clamp(i + 1, 0, ZOOM_STEPS.length - 1)];
       setScale(base * next);
     }
+    // Purpose: Zooms out to the previous zoom step
     function performZoomOut() {
       const base = getBaseScale();
       const ratio = getRelativeScale();
@@ -2417,6 +2502,7 @@ function goToPageNumber(n){
     if (zoomInBtn) zoomInBtn.onclick = () => performZoomIn();
     if (zoomOutBtn) zoomOutBtn.onclick = () => performZoomOut();
 
+// Purpose: Fits the PDF to the available width of the container
 async function fitToAvailableWidth(fraction = 1) {
   if (!pdfDoc) return;
   const scale = await computeWidthScale(fraction);
@@ -2425,6 +2511,7 @@ async function fitToAvailableWidth(fraction = 1) {
 }
 if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
 
+    // Purpose: Applies reader mode layout showing only the current page
     function applyReaderLayout() {
       document.body.classList.toggle('reader', readerMode);
       const pc = pdfDoc ? pdfDoc.numPages : 0;
@@ -2445,8 +2532,10 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       if (wrap) wrap.style.display = 'block';
     }
 
+    // Purpose: Requests fullscreen mode for reader view
     async function requestReaderFullscreen() {
       let lastError = null;
+      // Purpose: Attempts to request fullscreen on a target element with fallbacks
       const tryRequest = async (target) => {
         if (!target) return false;
         const methods = [
@@ -2500,7 +2589,9 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       return false;
     }
 
+    // Purpose: Exits fullscreen mode when leaving reader view
     async function exitReaderFullscreen() {
+      // Purpose: Attempts to exit fullscreen on a document with fallbacks
       const tryExit = async (doc) => {
         if (!doc) return false;
         if (doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement) {
@@ -2538,6 +2629,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       return false;
     }
 
+    // Purpose: Toggles reader mode on/off with fullscreen
     async function toggleReader() {
       if (!pdfDoc) return;
 
@@ -2587,6 +2679,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       }
     });
 
+    // Purpose: Navigates forward or backward by a delta number of pages
     function goToPage(delta) {
       if (!pdfDoc) return;
       const pc = pdfDoc.numPages;
@@ -2740,6 +2833,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
 
     let textToolbarTarget = null, textToolbarAnno = null;
 
+    // Purpose: Positions the text formatting toolbar above the text annotation
     function positionTextToolbar(el) {
       if (!textToolbarTarget) return;
       const r = el.getBoundingClientRect();
@@ -2758,6 +2852,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       textStylePanel.style.left = Math.max(8, left) + 'px';
     }
 
+    // Purpose: Shows the text formatting toolbar for a text annotation
     function showTextToolbar(el, anno) {
       textToolbarTarget = el;
       textToolbarAnno = anno;
@@ -2770,6 +2865,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
       positionTextToolbar(el);
     }
 
+    // Purpose: Hides the text formatting toolbar
     function hideTextToolbar() {
       textToolbarTarget = null;
       textToolbarAnno = null;
@@ -2778,6 +2874,7 @@ if (fitWidthBtn) fitWidthBtn.onclick = () => fitToAvailableWidth();
 
 /* ===== Find UI: show up/down + count only when there is input ===== */
 const searchContainer = document.querySelector('.search-container');
+// Purpose: Updates search UI visibility based on input presence
 function updateSearchUIState(markDirty = false) {
   const has = (searchInput.value || '').trim().length > 0;
   searchContainer.classList.toggle('has-query', has);
@@ -2792,6 +2889,7 @@ updateSearchUIState(false);
 const pageBox = document.getElementById('pageBox');
 const zoomBox = document.getElementById('zoomBox');
 const zoomMenu = document.getElementById('zoomMenu');
+    // Purpose: Synchronizes page number and zoom percentage displays
     function syncInfoBoxes() {
       const pc = pdfDoc ? pdfDoc.numPages : 1;
       const pn = pdfDoc ? clamp(currentPageIndex + 1, 1, pc) : 1;
@@ -2815,6 +2913,7 @@ const zoomMenu = document.getElementById('zoomMenu');
         zoomBox.textContent = `${percent}%`;
       }
     }
+    // Purpose: Updates page info display (wrapper for syncInfoBoxes)
     function updatePageInfo() { syncInfoBoxes(); }
     syncInfoBoxes();
    
@@ -2853,7 +2952,8 @@ const zoomMenu = document.getElementById('zoomMenu');
     
       pageInput.focus();
       pageInput.select();
-    
+
+      // Purpose: Handles blur event to navigate to entered page number
       const handler = () => {
         const n = parseInt(pageInput.value || '', 10);
         if (!Number.isNaN(n)) {
@@ -2865,7 +2965,8 @@ const zoomMenu = document.getElementById('zoomMenu');
         pageInput.removeEventListener('blur', handler);
         pageInput.removeEventListener('keydown', keyHandler);
       };
-      
+
+      // Purpose: Handles keyboard input for page number field
       const keyHandler = (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -2882,6 +2983,7 @@ const zoomMenu = document.getElementById('zoomMenu');
     });
 
 /* ===== Zoom menu behavior ===== */
+// Purpose: Shows the zoom menu dropdown below the zoom box
 function showZoomMenu(anchorEl) {
   const r = anchorEl.getBoundingClientRect();
   zoomMenu.style.left = `${window.scrollX + r.left}px`;
@@ -2889,6 +2991,7 @@ function showZoomMenu(anchorEl) {
   zoomMenu.style.display = 'block';
   zoomMenu.setAttribute('aria-hidden', 'false');
 }
+// Purpose: Hides the zoom menu dropdown
 function hideZoomMenu() {
   zoomMenu.style.display = 'none';
   zoomMenu.setAttribute('aria-hidden', 'true');
@@ -2955,22 +3058,8 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       if (textStylePanel.contains(e.target) || (textToolbarTarget && textToolbarTarget.contains(e.target))) return;
       hideTextToolbar();
     });
-    window.addEventListener('scroll', () => {
-      if (textToolbarTarget) positionTextToolbar(textToolbarTarget);
-    });
-    if (mainEl) {
-      mainEl.addEventListener('scroll', () => {
-        if (textToolbarTarget) positionTextToolbar(textToolbarTarget);
-      });
-    }
-    mainEl.addEventListener('scroll', () => {
-      mainEl.classList.add('is-scrolling');
-      if (scrollTimer) clearTimeout(scrollTimer);
-
-      scrollTimer = setTimeout(() => {
-        mainEl.classList.remove('is-scrolling');
-      }, 150);
-    }, { passive: true });
+    // NOTE: Scroll listeners for text toolbar positioning and is-scrolling class
+    // have been consolidated into the main scroll handler near the top of the file (~line 480)
 
     identityCtx.lineCap = 'round';
     identityCtx.lineJoin = 'round';
@@ -3097,6 +3186,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
     let printPrepared = false;
     let printInFlight = null;
 
+    // Purpose: Renders annotations on a print canvas layer
     function renderAnnotationsForPrint(layer, pageNum) {
       const list = annotations[String(pageNum)] || [];
       if (!list.length) return;
@@ -3169,6 +3259,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       }
     }
 
+    // Purpose: Renders a single page at high resolution for printing
     async function renderPrintPage(pageNum) {
       const page = await pdfDoc.getPage(pageNum);
       const baseViewport = page.getViewport({ scale: 1 });
@@ -3201,6 +3292,7 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
       printContainer?.appendChild(wrapper);
     }
 
+    // Purpose: Prepares all pages for printing at high resolution
     async function prepareForPrint() {
       if (!pdfDoc || !printContainer) return;
       if (printPrepared) return;
