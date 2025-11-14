@@ -786,6 +786,11 @@
   font: 500 .9rem var(--font-sans); color: #1a1a1a; border-radius: 6px;
 }
 .zoom-menu button:hover { background: #f5f5f5; }
+.zoom-menu button .icon-svg {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
 
   .signature-modal {
     position: fixed;
@@ -1103,6 +1108,7 @@
     <div id="zoomMenu" class="zoom-menu" role="menu" aria-hidden="true">
       <button id="zmIn"><img src="icons/magnifying-glass-plus.svg" class="icon-svg"> Zoom in</button>
       <button id="zmOut"><img src="icons/magnifying-glass-minus.svg" class="icon-svg"> Zoom out</button>
+      <button id="zm100"><img src="icons/magnifying-glass.svg" class="icon-svg"> 100%</button>
       <button id="zmFit"><img src="icons/left-right.svg" class="icon-svg"> Fit width</button>
       <button id="zmReader"><img src="icons/book-open-reader.svg" class="icon-svg">Reader mode</button>
     </div>
@@ -1143,6 +1149,7 @@
   <h3>Navigation</h3>
   <ul>
     <li>Zoom with +/-</li>
+    <li><strong>1:</strong> Reset zoom to 100%</li>
     <li><strong>r:</strong> Toggle full-screen reader</li>
     <li><strong>W:</strong> Fit width</li>
   </ul>

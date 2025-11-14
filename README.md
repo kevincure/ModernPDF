@@ -2,6 +2,8 @@
 
 This project is a lightweight PDF reader that supports just enough annotation tools for quick markups. Load a document, drop text or comment pins, reuse a stored signature, and export an updated copy — all without extra chrome.
 
+**Chrome Extension:** ModernPDF is designed as a Chrome extension. While it may work in other Chromium-based browsers (Edge, Brave, Opera), it is not compatible with Firefox or Safari, which use different extension architectures.
+
 ## Workflow
 - **Open** a PDF with the folder icon, then **Save** to download the annotated copy. Any existing PDF text comments are imported as pins you can continue.
 - Use the person icon to set your **name and signature**; both values persist between sessions.
