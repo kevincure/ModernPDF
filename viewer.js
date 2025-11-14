@@ -711,11 +711,9 @@ function goToPageNumber(n){
         canvasContext: slot.ctx,
         viewport,
         transform: t,
-        // CRITICAL: Don't render annotation appearances on canvas - we handle them in annotation layer
-        // This prevents pdf.js from drawing sticky note icons on the canvas
+        // Don't render annotation appearances on canvas - we handle them in annotation layer
         annotationMode: pdfjsLib?.AnnotationMode?.DISABLE || 0
       };
-      console.log('[RENDER DEBUG] Rendering page with annotationMode DISABLED to prevent canvas annotation icons');
       slot.renderTask = page.render(renderParams);
 
       try {
@@ -770,49 +768,15 @@ function goToPageNumber(n){
         }
         syncPdfLayerTransform(slot, viewport);
       }
-      const pageNum = slot.pageNum || 'unknown';
       const allAnnots = await page.getAnnotations({ intent: 'display' });
-      console.log(`[ANNOT DEBUG] Page ${pageNum}: Loaded ${allAnnots.length} total annotations`, allAnnots.map(a => ({
-        id: a.id,
-        type: a.annotationType ?? a.subtype ?? a.subType,
-        typeName: a.annotationType === 1 ? 'TEXT(1)' : (a.annotationType === 28 ? 'POPUP(28)' : a.annotationType),
-        subtype: a.subtype,
-        rect: a.rect
-      })));
 
       // Drop sticky-note comments; we render our own pins/threads for those.
       const annotations = allAnnots.filter(a => {
         const t = a.annotationType ?? a.subtype ?? a.subType;
         // Filter out Text annotations (type 1) and Popup annotations (types 16 and 28)
         // Acrobat creates type 16 Popups, other tools may create type 28
-        const isFiltered = (
-          t === 1 || t === 'Text' ||           // Text annotations
-          t === 16 || t === 28 || t === 'Popup' // Popup annotations (both types)
-        );
-        if (isFiltered) {
-          console.log(`[ANNOT DEBUG] Filtering out annotation:`, {
-            id: a.id,
-            type: t,
-            annotationType: a.annotationType,
-            subtype: a.subtype,
-            subType: a.subType,
-            reason: t === 1 || t === 'Text' ? 'Text annotation' : 'Popup annotation'
-          });
-        } else {
-          // Log annotations that are NOT filtered so we can see what's getting through
-          console.log(`[ANNOT DEBUG] Keeping annotation:`, {
-            id: a.id,
-            type: t,
-            annotationType: a.annotationType,
-            subtype: a.subtype,
-            subType: a.subType
-          });
-        }
-        // pdf.js: AnnotationType.TEXT === 1, POPUP === 16 or 28
-         return !isFiltered;
+        return !(t === 1 || t === 'Text' || t === 16 || t === 28 || t === 'Popup');
       });
-
-      console.log(`[ANNOT DEBUG] Page ${pageNum}: After filtering, ${annotations.length} annotations remain (filtered out ${allAnnots.length - annotations.length} text/popup annotations)`);
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
         return;
@@ -854,140 +818,11 @@ function goToPageNumber(n){
         if (slot.pdfRenderToken === renderToken) {
           slot.pdfAnnotationLayer = layer;
         }
-
-        // Check what was actually rendered in the PDF layer
-        console.log(`[ANNOT DEBUG] Page ${pageNum}: PDF layer render complete. Checking rendered elements...`);
-        const pdfLayerElements = Array.from(slot.pdfLayer.children);
-        console.log(`[ANNOT DEBUG] Page ${pageNum}: PDF layer contains ${pdfLayerElements.length} child elements:`, pdfLayerElements.map(el => ({
-          tagName: el.tagName,
-          className: el.className,
-          dataAnnotationId: el.dataset?.annotationId,
-          innerHTML: el.innerHTML?.substring(0, 50),
-          style: {
-            display: el.style.display,
-            visibility: el.style.visibility,
-            opacity: el.style.opacity,
-            backgroundColor: el.style.backgroundColor
-          },
-          computedStyle: {
-            display: window.getComputedStyle(el).display,
-            backgroundColor: window.getComputedStyle(el).backgroundColor,
-            position: window.getComputedStyle(el).position
-          }
-        })));
-
-        // Specifically check for text/popup annotations that might have slipped through
-        const textAnnotElems = slot.pdfLayer.querySelectorAll('.textAnnotation, .popupWrapper, .popupAnnotation, [data-annotation-type="text"], [data-annotation-type="popup"]');
-        if (textAnnotElems.length > 0) {
-          console.warn(`[ANNOT DEBUG] Page ${pageNum}: WARNING! Found ${textAnnotElems.length} text/popup annotation elements in PDF layer despite filtering!`, Array.from(textAnnotElems).map(el => ({
-            className: el.className,
-            tagName: el.tagName,
-            computedDisplay: window.getComputedStyle(el).display,
-            isVisible: window.getComputedStyle(el).display !== 'none',
-            backgroundColor: window.getComputedStyle(el).backgroundColor
-          })));
-          // FORCIBLY REMOVE THEM
-          console.log(`[ANNOT DEBUG] Page ${pageNum}: Forcibly removing ${textAnnotElems.length} text/popup elements...`);
-          textAnnotElems.forEach(el => el.remove());
-        }
-
-        // Also check the entire page container for any stray annotation elements
-        const pageContainer = slot.canvas?.parentElement;
-        if (pageContainer) {
-          const allAnnots = pageContainer.querySelectorAll('[class*="Annotation"], [data-annotation-type]');
-          console.log(`[ANNOT DEBUG] Page ${pageNum}: Found ${allAnnots.length} total annotation-like elements in page container:`, Array.from(allAnnots).map(el => ({
-            className: el.className,
-            tagName: el.tagName,
-            parent: el.parentElement?.className,
-            computedStyle: {
-              display: window.getComputedStyle(el).display,
-              backgroundColor: window.getComputedStyle(el).backgroundColor
-            }
-          })));
-        }
       } catch (err) {
         if (!(err && err.name === 'RenderingCancelledException')) {
           console.warn('Annotation layer render failed', err);
         }
       }
-
-      // Final cleanup: Comprehensive scan to find ALL visible elements
-      setTimeout(() => {
-        console.log('[CLEANUP] Running comprehensive DOM scan for mystery elements...');
-
-        // 1. Check for text/popup annotation elements
-        const allTextPopups = document.querySelectorAll('.textAnnotation, .popupWrapper, .popupAnnotation, [data-annotation-type="text"], [data-annotation-type="popup"]');
-        if (allTextPopups.length > 0) {
-          console.warn(`[CLEANUP] Found ${allTextPopups.length} text/popup elements, removing...`, Array.from(allTextPopups).map(el => ({
-            className: el.className,
-            tagName: el.tagName,
-            parent: el.parentElement?.className,
-            backgroundColor: window.getComputedStyle(el).backgroundColor
-          })));
-          allTextPopups.forEach(el => el.remove());
-        }
-
-        // 2. Check for any button elements in annotation layers that aren't our custom comment pins
-        const allButtons = document.querySelectorAll('.pdf-annotation-layer button:not(.comment-pin)');
-        if (allButtons.length > 0) {
-          console.warn(`[CLEANUP] Found ${allButtons.length} non-custom buttons in PDF layer, removing...`, Array.from(allButtons).map(el => ({
-            className: el.className,
-            innerHTML: el.innerHTML?.substring(0, 50),
-            parent: el.parentElement?.className,
-            backgroundColor: window.getComputedStyle(el).backgroundColor
-          })));
-          allButtons.forEach(el => el.remove());
-        }
-
-        // 3. COMPREHENSIVE SCAN: Find ALL button elements on the entire page
-        const allPageButtons = document.querySelectorAll('button');
-        console.log(`[CLEANUP] Total buttons on page: ${allPageButtons.length}`);
-        const suspiciousButtons = Array.from(allPageButtons).filter(btn => {
-          const styles = window.getComputedStyle(btn);
-          const bgColor = styles.backgroundColor;
-          // Check for purple/yellow/orange backgrounds or if not a comment-pin
-          const isPurple = bgColor.includes('128, 0, 128') || bgColor.includes('purple');
-          const isYellow = bgColor.includes('255, 255, 0') || bgColor.includes('yellow');
-          const isOrange = bgColor.includes('255, 165, 0') || bgColor.includes('orange');
-          const isNotCommentPin = !btn.classList.contains('comment-pin');
-          return (isPurple || isYellow || isOrange) || (isNotCommentPin && btn.parentElement?.className?.includes('layer'));
-        });
-
-        if (suspiciousButtons.length > 0) {
-          console.warn(`[CLEANUP] Found ${suspiciousButtons.length} suspicious buttons:`, suspiciousButtons.map(btn => ({
-            className: btn.className,
-            innerHTML: btn.innerHTML?.substring(0, 100),
-            parent: btn.parentElement?.className,
-            grandparent: btn.parentElement?.parentElement?.className,
-            backgroundColor: window.getComputedStyle(btn).backgroundColor,
-            position: window.getComputedStyle(btn).position,
-            left: btn.style.left,
-            top: btn.style.top,
-            isCommentPin: btn.classList.contains('comment-pin')
-          })));
-        }
-
-        // 4. Scan for any elements with colored backgrounds in layer elements
-        const allLayerChildren = document.querySelectorAll('.layer > *, [class*="layer"] > *');
-        console.log(`[CLEANUP] Scanning ${allLayerChildren.length} elements in layers...`);
-        const coloredElements = Array.from(allLayerChildren).filter(el => {
-          const styles = window.getComputedStyle(el);
-          const bgColor = styles.backgroundColor;
-          return bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
-        });
-        if (coloredElements.length > 0) {
-          console.warn(`[CLEANUP] Found ${coloredElements.length} elements with backgrounds in layers:`, coloredElements.map(el => ({
-            tagName: el.tagName,
-            className: el.className,
-            innerHTML: el.innerHTML?.substring(0, 50),
-            parent: el.parentElement?.className,
-            backgroundColor: window.getComputedStyle(el).backgroundColor,
-            position: window.getComputedStyle(el).position,
-            left: el.style.left,
-            top: el.style.top
-          })));
-        }
-      }, 100);
     }
 
     async function renderTextLayersForAll() {
@@ -1086,19 +921,11 @@ function goToPageNumber(n){
             const ph = vp.height;
 
             const annots = await page.getAnnotations({ intent: 'display' });
-            console.log(`[IMPORT DEBUG] Page ${pNum}: Found ${annots.length} total PDF annotations`);
             if (!annots || !annots.length) return null;
 
             const texts = annots.filter(an =>
               (an.subtype || an.subType || an.annotationType) === 'Text' || an.annotationType === 1
             );
-            console.log(`[IMPORT DEBUG] Page ${pNum}: Found ${texts.length} Text annotations to import`, texts.map(t => ({
-              id: t.id,
-              type: t.annotationType,
-              inReplyTo: t.inReplyTo,
-              author: getAuthor(t),
-              textPreview: ((t.contentsObj?.str || t.contents || '').substring(0, 30))
-            })));
             if (!texts.length) return null;
 
             const byId = new Map();
@@ -1129,8 +956,6 @@ function goToPageNumber(n){
               if (an !== root) g.replies.push(an);
             }
 
-            console.log(`[IMPORT DEBUG] Page ${pNum}: Grouped ${texts.length} Text annotations into ${groups.size} comment threads`);
-
             const pageAnnotations = [];
             for (const g of groups.values()) {
               const r = (g.root.rect || []).map(Number);
@@ -1157,11 +982,6 @@ function goToPageNumber(n){
               }
 
               if (thread.length > 0) {
-                console.log(`[IMPORT DEBUG] Page ${pNum}: Creating custom comment from ${thread.length} Text annotations (1 root + ${g.replies.length} replies)`, {
-                  rootAuthor,
-                  totalReplies: g.replies.length,
-                  threadItems: thread.map((t, i) => ({ index: i, author: t.author, textPreview: t.text.substring(0, 30) }))
-                });
                 pageAnnotations.push({
                   page: pNum,
                   x,
@@ -1778,16 +1598,6 @@ function goToPageNumber(n){
                 });
               }
             } else if (a.type === 'comment' && (a.thread?.length || 0) > 0) {
-              console.log(`[SAVE DEBUG] Saving comment with ${a.thread.length} thread items:`, {
-                id: a.id,
-                origin: a.origin,
-                page: a.page,
-                x: a.x,
-                y: a.y,
-                threadLength: a.thread.length,
-                thread: a.thread.map((t, i) => ({ index: i, author: t.author, textPreview: (t.text || '').substring(0, 30) }))
-              });
-
               const rectInfo = clonePdfRect(a.pdfRect);
               const estimatedHeight = rectInfo ? Math.max(8, rectInfo.top - rectInfo.bottom) : 24;
               const rootY = rectInfo ? rectInfo.bottom : ph - a.y - 24;
@@ -1795,10 +1605,9 @@ function goToPageNumber(n){
               const rootX = rectInfo ? rectInfo.left : a.x;
               let rootRef = null;
 
-              const annotsArray = getAnnotsArray(page); // ensure we have an Annots array
+              const annotsArray = getAnnotsArray(page);
 
               if (a.origin === 'pdf') {
-                console.log(`[SAVE DEBUG] Comment originated from PDF, finding existing root annotation...`);
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, rootTarget, 6) || null;
                 if (!rootRef) {
                   console.warn('Skipping reply export for comment without original thread', {
@@ -1808,31 +1617,23 @@ function goToPageNumber(n){
                   });
                   continue;
                 }
-                const start = Math.max((a._importedCount | 0), 1); // replies user added
-                console.log(`[SAVE DEBUG] Adding ${a.thread.length - start} new replies to existing PDF annotation (start index: ${start})`);
+                const start = Math.max((a._importedCount | 0), 1);
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
-                  console.log(`[SAVE DEBUG] Creating reply ${i} to PDF annotation:`, { author: r.author, textPreview: (r.text || '').substring(0, 30) });
                   addReplyAnnot(page, rootRef,
                     rootX + 6 * i, rootY - 6 * i, 24, 24,
                     String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
-                // Normal user-created thread: create root + all replies
-                console.log(`[SAVE DEBUG] Creating new PDF annotation for user-created comment thread`);
                 const root = a.thread[0];
-                console.log(`[SAVE DEBUG] Creating root PDF Text annotation:`, { author: root.author, textPreview: (root.text || '').substring(0, 30) });
                 rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
-                console.log(`[SAVE DEBUG] Adding ${a.thread.length - 1} replies to root annotation`);
                 for (let i = 1; i < a.thread.length; i++) {
                   const r = a.thread[i];
-                  console.log(`[SAVE DEBUG] Creating reply ${i} PDF annotation:`, { author: r.author, textPreview: (r.text || '').substring(0, 30) });
                    addReplyAnnot(page, rootRef,
                     rootX + 6*i, rootY - 6*i, 24, 24,
                     String(r.text||''), String(r.author || userName || 'User'));
                 }
-                console.log(`[SAVE DEBUG] Finished creating comment thread: 1 root + ${a.thread.length - 1} replies = ${a.thread.length} total PDF Text annotations`);
               }
             }
           }
@@ -2181,15 +1982,6 @@ function goToPageNumber(n){
         return div;
       } else if (anno.type === 'comment') {
         normalizeCommentAnnotation(anno);
-        console.log(`[COMMENT PIN DEBUG] Creating custom comment pin for page ${pageNum}:`, {
-          id: anno.id,
-          x: anno.x,
-          y: anno.y,
-          origin: anno.origin,
-          threadLength: anno.thread?.length || 0,
-          hasReplies: (anno.thread?.length || 0) > 1
-        });
-
         const pin = document.createElement('button');
         pin.type = 'button';
         pin.className = 'comment-pin';
