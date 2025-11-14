@@ -82,6 +82,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
       setHash() {},
       addLinkAttributes(element, data) {
         if (!element) return;
+        console.log('[LINK DEBUG] addLinkAttributes called with FULL data object:', data);
+        console.log('[LINK DEBUG] data keys:', Object.keys(data || {}));
         console.log('[LINK DEBUG] Adding link attributes to element:', {
           tagName: element.tagName,
           className: element.className,
