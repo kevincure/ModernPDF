@@ -85,7 +85,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
 
         // Handle case where pdf.js passes URL string directly instead of object
         if (typeof data === 'string') {
-          console.log('[LINK FIX] Data is a string (URL), converting to object:', data);
           data = { url: data };
         }
 
@@ -96,26 +95,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
           element.rel = this.externalLinkRel;
           element.dataset.pdfExternalUrl = data.url;
           delete element.dataset.pdfDest;
-          console.log('[LINK DEBUG] Set as external link:', data.url);
         } else if (data?.dest) {
           element.dataset.pdfDest = JSON.stringify(data.dest);
           element.href = this.getAnchorUrl(this.getDestinationHash(data.dest));
           delete element.dataset.pdfExternalUrl;
-          console.log('[LINK DEBUG] Set as internal link:', data.dest);
         }
         if (!element.dataset.pdfLinkBound) {
           element.dataset.pdfLinkBound = '1';
           element.addEventListener('click', (ev) => {
-            console.log('[LINK CLICK] Link clicked!', {
-              external: element.dataset.pdfExternalUrl,
-              dest: element.dataset.pdfDest,
-              event: ev
-            });
             const external = element.dataset.pdfExternalUrl;
             const destJson = element.dataset.pdfDest;
             if (external) {
               ev.preventDefault();
-              console.log('[LINK CLICK] Opening external URL:', external);
               window.open(external, '_blank', 'noopener,noreferrer');
               return;
             }
@@ -127,40 +118,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
               } catch (_) {
                 // ignore parse errors, fall back to raw string
               }
-              console.log('[LINK CLICK] Navigating to internal destination:', destVal);
               service.navigateTo(destVal);
             }
           });
-          console.log('[LINK DEBUG] Click handler attached to link');
         }
       },
       goToDestination(dest) {
-        console.log('[LINK NAV] goToDestination called with:', dest);
         if (!pdfDoc) {
-          console.warn('[LINK NAV] No PDF document loaded!');
           return;
         }
         (async () => {
           try {
-            console.log('[LINK NAV] Getting destination from PDF...');
             const explicitDest = await pdfDoc.getDestination(dest);
-            console.log('[LINK NAV] Explicit destination:', explicitDest);
             if (!explicitDest) {
-              console.warn('[LINK NAV] No explicit destination found for:', dest);
               return;
             }
             const ref = explicitDest[0];
-            console.log('[LINK NAV] Getting page index for ref:', ref);
             const pageIndex = await pdfDoc.getPageIndex(ref);
-            console.log('[LINK NAV] Navigating to page:', pageIndex + 1);
             goToPageNumber(pageIndex + 1);
           } catch (err) {
-            console.warn('[LINK NAV] Failed to follow destination', err);
+            console.warn('Failed to follow destination', err);
           }
         })();
       },
       navigateTo(dest) {
-        console.log('[LINK NAV] navigateTo called with:', dest);
         this.goToDestination(dest);
       }
     };
@@ -312,20 +293,30 @@ const leftBar = document.getElementById('leftBar');
       try {
         const selector = `[data-annotation-id="${safeCssEscape(widgetId)}"]`;
         const container = document.querySelector(selector);
-        if (!container) return null;
+        if (!container) {
+          console.log('[FORM DEBUG] No container found for widget:', widgetId);
+          return null;
+        }
         const field = container.matches('input, select, textarea')
           ? container
           : container.querySelector('input, select, textarea');
-        if (!field) return null;
+        if (!field) {
+          console.log('[FORM DEBUG] No field found in container for widget:', widgetId);
+          return null;
+        }
+        let result = null;
         if (field.type === 'checkbox' || field.type === 'radio') {
-          return { type: field.type, checked: field.checked, value: field.value };
-        }
-        if (field.tagName === 'SELECT') {
+          result = { type: field.type, checked: field.checked, value: field.value };
+        } else if (field.tagName === 'SELECT') {
           const selected = Array.from(field.selectedOptions || []).map(opt => opt.value);
-          return { type: 'select', value: field.multiple ? selected : (selected[0] ?? '') };
+          result = { type: 'select', value: field.multiple ? selected : (selected[0] ?? '') };
+        } else {
+          result = { type: 'text', value: field.value };
         }
-        return { type: 'text', value: field.value };
+        console.log('[FORM DEBUG] Read DOM state for widget', widgetId, ':', result);
+        return result;
       } catch (err) {
+        console.error('[FORM DEBUG] Error reading widget DOM state:', widgetId, err);
         return null;
       }
     }
@@ -799,18 +790,6 @@ function goToPageNumber(n){
       }
       const allAnnots = await page.getAnnotations({ intent: 'display' });
 
-      console.log('[LINK DEBUG] All annotations from PDF:', allAnnots.map(a => ({
-        id: a.id,
-        type: a.annotationType,
-        subtype: a.subtype,
-        hasUrl: !!a.url,
-        hasAction: !!a.action,
-        hasDest: !!a.dest,
-        url: a.url,
-        dest: a.dest,
-        action: a.action
-      })));
-
       // Drop sticky-note comments; we render our own pins/threads for those.
       const annotations = allAnnots.filter(a => {
         const t = a.annotationType ?? a.subtype ?? a.subType;
@@ -818,14 +797,6 @@ function goToPageNumber(n){
         // Acrobat creates type 16 Popups, other tools may create type 28
         return !(t === 1 || t === 'Text' || t === 16 || t === 28 || t === 'Popup');
       });
-
-      console.log('[LINK DEBUG] Annotations after filtering:', annotations.map(a => ({
-        id: a.id,
-        type: a.annotationType,
-        subtype: a.subtype,
-        url: a.url,
-        dest: a.dest
-      })));
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
         return;
@@ -1432,6 +1403,8 @@ function goToPageNumber(n){
             console.warn('Reading annotation storage failed:', err);
           }
           const storageLookup = storage && typeof storage === 'object' ? storage : {};
+          console.log('[FORM DEBUG] Processing', Object.keys(fieldObjects).length, 'fields');
+          console.log('[FORM DEBUG] Annotation storage:', storage);
           for (const [name, widgets] of Object.entries(fieldObjects)) {
             const field = fieldMap.get(name);
             if (!field) continue;
@@ -1459,6 +1432,7 @@ function goToPageNumber(n){
               if (storageEntry.value !== undefined) value = storageEntry.value;
               else if (storageEntry.valueAsString !== undefined) value = storageEntry.valueAsString;
             }
+            console.log('[FORM DEBUG] Field:', name, '| Type:', field.constructor?.name, '| Storage:', storageEntry, '| DOM:', domState, '| Default value:', value);
             try {
               const ctor = field.constructor?.name;
               // Prefer storage entry over static widget default
@@ -1488,6 +1462,7 @@ function goToPageNumber(n){
                     isOn = false;
                   }
                 }
+                console.log('[FORM DEBUG] Checkbox', name, '| Setting to:', isOn ? 'checked' : 'unchecked', '| exportVal:', exportVal);
                 if (isOn) field.check(); else field.uncheck();
               } else if (ctor === 'PDFRadioGroup') {
                 const domVal = typeof domState?.value === 'string' ? domState.value : null;
@@ -1497,6 +1472,7 @@ function goToPageNumber(n){
                 // May be a string, or an array for multi-select
                 const domVal = domState?.value;
                 const v = domVal ?? entry.value ?? entry.valueAsString ?? value;
+                console.log('[FORM DEBUG] Dropdown/List', name, '| Setting to:', v);
                 if (Array.isArray(v)) {
                   field.select(...v.map(x => String(x)));
                 } else if (v != null) {
