@@ -82,6 +82,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
       setHash() {},
       addLinkAttributes(element, data) {
         if (!element) return;
+
+        // Handle case where pdf.js passes URL string directly instead of object
+        if (typeof data === 'string') {
+          console.log('[LINK FIX] Data is a string (URL), converting to object:', data);
+          data = { url: data };
+        }
+
         const service = this;
         if (data?.url) {
           element.href = data.url;
@@ -89,18 +96,26 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
           element.rel = this.externalLinkRel;
           element.dataset.pdfExternalUrl = data.url;
           delete element.dataset.pdfDest;
+          console.log('[LINK DEBUG] Set as external link:', data.url);
         } else if (data?.dest) {
           element.dataset.pdfDest = JSON.stringify(data.dest);
           element.href = this.getAnchorUrl(this.getDestinationHash(data.dest));
           delete element.dataset.pdfExternalUrl;
+          console.log('[LINK DEBUG] Set as internal link:', data.dest);
         }
         if (!element.dataset.pdfLinkBound) {
           element.dataset.pdfLinkBound = '1';
           element.addEventListener('click', (ev) => {
+            console.log('[LINK CLICK] Link clicked!', {
+              external: element.dataset.pdfExternalUrl,
+              dest: element.dataset.pdfDest,
+              event: ev
+            });
             const external = element.dataset.pdfExternalUrl;
             const destJson = element.dataset.pdfDest;
             if (external) {
               ev.preventDefault();
+              console.log('[LINK CLICK] Opening external URL:', external);
               window.open(external, '_blank', 'noopener,noreferrer');
               return;
             }
@@ -112,26 +127,40 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = isExtension
               } catch (_) {
                 // ignore parse errors, fall back to raw string
               }
+              console.log('[LINK CLICK] Navigating to internal destination:', destVal);
               service.navigateTo(destVal);
             }
           });
+          console.log('[LINK DEBUG] Click handler attached to link');
         }
       },
       goToDestination(dest) {
-        if (!pdfDoc) return;
+        console.log('[LINK NAV] goToDestination called with:', dest);
+        if (!pdfDoc) {
+          console.warn('[LINK NAV] No PDF document loaded!');
+          return;
+        }
         (async () => {
           try {
+            console.log('[LINK NAV] Getting destination from PDF...');
             const explicitDest = await pdfDoc.getDestination(dest);
-            if (!explicitDest) return;
+            console.log('[LINK NAV] Explicit destination:', explicitDest);
+            if (!explicitDest) {
+              console.warn('[LINK NAV] No explicit destination found for:', dest);
+              return;
+            }
             const ref = explicitDest[0];
+            console.log('[LINK NAV] Getting page index for ref:', ref);
             const pageIndex = await pdfDoc.getPageIndex(ref);
+            console.log('[LINK NAV] Navigating to page:', pageIndex + 1);
             goToPageNumber(pageIndex + 1);
           } catch (err) {
-            console.warn('Failed to follow destination', err);
+            console.warn('[LINK NAV] Failed to follow destination', err);
           }
         })();
       },
       navigateTo(dest) {
+        console.log('[LINK NAV] navigateTo called with:', dest);
         this.goToDestination(dest);
       }
     };
@@ -707,11 +736,13 @@ function goToPageNumber(n){
         } catch (_) {}
       }
       const t = [dpr, 0, 0, dpr, 0, 0];
-      const renderParams = { canvasContext: slot.ctx, viewport, transform: t };
-      const formsMode = pdfjsLib?.AnnotationMode?.ENABLE_FORMS;
-      if (typeof formsMode === 'number') {
-        renderParams.annotationMode = formsMode;
-      }
+      const renderParams = {
+        canvasContext: slot.ctx,
+        viewport,
+        transform: t,
+        // Don't render annotation appearances on canvas - we handle them in annotation layer
+        annotationMode: pdfjsLib?.AnnotationMode?.DISABLE || 0
+      };
       slot.renderTask = page.render(renderParams);
 
       try {
@@ -767,12 +798,34 @@ function goToPageNumber(n){
         syncPdfLayerTransform(slot, viewport);
       }
       const allAnnots = await page.getAnnotations({ intent: 'display' });
+
+      console.log('[LINK DEBUG] All annotations from PDF:', allAnnots.map(a => ({
+        id: a.id,
+        type: a.annotationType,
+        subtype: a.subtype,
+        hasUrl: !!a.url,
+        hasAction: !!a.action,
+        hasDest: !!a.dest,
+        url: a.url,
+        dest: a.dest,
+        action: a.action
+      })));
+
       // Drop sticky-note comments; we render our own pins/threads for those.
       const annotations = allAnnots.filter(a => {
         const t = a.annotationType ?? a.subtype ?? a.subType;
-        // pdf.js: AnnotationType.TEXT === 1
-         return t !== 1 && t !== 'Text' && t !== 28 && t !== 'Popup';
+        // Filter out Text annotations (type 1) and Popup annotations (types 16 and 28)
+        // Acrobat creates type 16 Popups, other tools may create type 28
+        return !(t === 1 || t === 'Text' || t === 16 || t === 28 || t === 'Popup');
       });
+
+      console.log('[LINK DEBUG] Annotations after filtering:', annotations.map(a => ({
+        id: a.id,
+        type: a.annotationType,
+        subtype: a.subtype,
+        url: a.url,
+        dest: a.dest
+      })));
       if (!annotations || !annotations.length) {
         slot.pdfRenderTask = null;
         return;
@@ -1601,7 +1654,7 @@ function goToPageNumber(n){
               const rootX = rectInfo ? rectInfo.left : a.x;
               let rootRef = null;
 
-              const annotsArray = getAnnotsArray(page); // ensure we have an Annots array
+              const annotsArray = getAnnotsArray(page);
 
               if (a.origin === 'pdf') {
                 rootRef = findNearestTextAnnotRef(doc, annotsArray, rootTarget, 6) || null;
@@ -1613,7 +1666,7 @@ function goToPageNumber(n){
                   });
                   continue;
                 }
-                const start = Math.max((a._importedCount | 0), 1); // replies user added
+                const start = Math.max((a._importedCount | 0), 1);
                 for (let i = start; i < a.thread.length; i++) {
                   const r = a.thread[i];
                   addReplyAnnot(page, rootRef,
@@ -1621,7 +1674,6 @@ function goToPageNumber(n){
                     String(r.text || ''), String(r.author || userName || 'User'));
                 }
               } else {
-                // Normal user-created thread: create root + all replies
                 const root = a.thread[0];
                 rootRef = addTextAnnot(page, rootX, rootY, 24, Math.max(24, estimatedHeight),
                                        String(root.text||''), String(root.author || userName || 'User'));
