@@ -1542,11 +1542,11 @@ function goToPageNumber(n){
                   refsToKeep.push(ref);
                 }
               }
-              
+
               // If any refs were marked for deletion, rebuild the Annots array
               if (refsToDel.size > 0) {
-                annotsArray.clear();
-                refsToKeep.forEach(r => annotsArray.push(r));
+                const newAnnotsArray = doc.context.obj(refsToKeep);
+                page.node.set(N.of('Annots'), newAnnotsArray);
               }
             }
 
