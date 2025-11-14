@@ -1439,12 +1439,9 @@ function goToPageNumber(n){
               const entry = storageEntry || {};
               const exportVal = widgetArray[0]?.exportValue || 'Yes';
 
-              if (ctor === 'PDFTextField') {
-                const domValue = domState?.value;
-                const v = (typeof domValue === 'string' ? domValue : null)
-                  ?? entry.valueAsString ?? entry.value ?? value ?? '';
-                field.setText(v != null ? String(v) : '');
-              } else if (ctor === 'PDFCheckBox') {
+              // Use method detection instead of constructor names since pdf-lib may be minified
+              if (typeof field.check === 'function' && typeof field.uncheck === 'function') {
+                // This is a checkbox
                 // pdf.js may store {checked:true}, {value:true}, or {valueAsString:'Yes'|'Off'}
                 const vStr = entry.valueAsString ?? (typeof entry.value === 'string' ? entry.value : null);
                 let isOn =
@@ -1464,24 +1461,24 @@ function goToPageNumber(n){
                 }
                 console.log('[FORM DEBUG] Checkbox', name, '| Setting to:', isOn ? 'checked' : 'unchecked', '| exportVal:', exportVal);
                 if (isOn) field.check(); else field.uncheck();
-              } else if (ctor === 'PDFRadioGroup') {
-                const domVal = typeof domState?.value === 'string' ? domState.value : null;
-                const v = domVal ?? entry.valueAsString ?? entry.value ?? value ?? widgetArray[0]?.value;
-                if (typeof v === 'string') field.select(v);
-              } else if (ctor === 'PDFDropdown' || ctor === 'PDFOptionList') {
-                // May be a string, or an array for multi-select
+              } else if (typeof field.select === 'function') {
+                // This is a dropdown, option list, or radio group
                 const domVal = domState?.value;
                 const v = domVal ?? entry.value ?? entry.valueAsString ?? value;
-                console.log('[FORM DEBUG] Dropdown/List', name, '| Setting to:', v);
+                console.log('[FORM DEBUG] Dropdown/Radio/List', name, '| Setting to:', v);
                 if (Array.isArray(v)) {
                   field.select(...v.map(x => String(x)));
+                } else if (typeof v === 'string') {
+                  field.select(v);
                 } else if (v != null) {
                   field.select(String(v));
                 }
               } else if (typeof field.setText === 'function') {
+                // This is a text field
                 const domValue = domState?.value;
-                const v = (domValue != null ? domValue : (entry.valueAsString ?? entry.value ?? value));
-                if (v != null) field.setText(String(v));
+                const v = (typeof domValue === 'string' ? domValue : null)
+                  ?? entry.valueAsString ?? entry.value ?? value ?? '';
+                field.setText(v != null ? String(v) : '');
               }
             } catch (err) {
                console.warn('Failed to apply form value for field', name, err);
