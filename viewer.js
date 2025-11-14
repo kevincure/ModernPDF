@@ -1569,24 +1569,43 @@ function goToPageNumber(n){
 
               // Log root annotation details
               const rootDict = doc.context.lookup(rootRefToDel);
+              const rootPopup = rootDict?.get(N.of('Popup'));
               console.log('[DELETE DEBUG] Root annotation contents:', rootDict?.get(N.of('Contents'))?.toString());
               console.log('[DELETE DEBUG] Root ref:', rootRefToDel);
+              console.log('[DELETE DEBUG] Root Popup ref:', rootPopup?.toString());
+
+              // If root has a Popup annotation, mark it for deletion too
+              if (rootPopup) {
+                refsToDel.add(rootPopup);
+                console.log('[DELETE DEBUG] Also marking root Popup annotation for deletion:', rootPopup.toString());
+              }
 
               // Now find all replies to that root
               for (const ref of arr) {
                 if (ref === rootRefToDel) continue; // Already in del set
+                if (refsToDel.has(ref)) continue; // Already marked for deletion (e.g., popup)
 
                 const dict = doc.context.lookup(ref);
                 const irt = dict?.get(N.of('IRT'));
+                const subtype = dict?.get(N.of('Subtype'));
+                const popup = dict?.get(N.of('Popup'));
 
                 console.log('[DELETE DEBUG] Checking ref:', ref,
+                  '| Subtype:', subtype?.toString(),
                   '| IRT:', irt,
                   '| IRT === rootRefToDel:', irt === rootRefToDel,
+                  '| Popup:', popup,
                   '| Contents:', dict?.get(N.of('Contents'))?.toString());
 
                 if (irt === rootRefToDel) {
                   refsToDel.add(ref); // Delete replies too
                   console.log('[DELETE DEBUG] -> Marked for deletion (reply)');
+
+                  // Also delete the reply's Popup if it has one
+                  if (popup) {
+                    refsToDel.add(popup);
+                    console.log('[DELETE DEBUG] -> Also marking reply Popup for deletion:', popup.toString());
+                  }
                 } else {
                   refsToKeep.push(ref);
                   console.log('[DELETE DEBUG] -> Keeping');
