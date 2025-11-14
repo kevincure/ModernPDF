@@ -4,6 +4,12 @@ This project is a lightweight PDF reader that supports just enough annotation to
 
 **Chrome Extension:** ModernPDF is designed as a Chrome extension. While it may work in other Chromium-based browsers (Edge, Brave, Opera), it is not compatible with Firefox or Safari, which use different extension architectures.
 
+## Install as a Chrome or Edge extension
+1. Clone or download this repository to your machine and note the folder location.
+2. In **Google Chrome**, open `chrome://extensions`, toggle **Developer mode** on, then click **Load unpacked** and choose the folder. In **Microsoft Edge**, open `edge://extensions`, enable **Developer mode**, and select **Load unpacked** to pick the same folder.
+3. (Recommended) After loading, enable **Allow access to file URLs** in the extension card if you plan to open local PDFs from disk.
+4. The ModernPDF action button toggles interception on/off. Leave it **ON** for automatic PDF replacement in the custom viewer.
+
 ## Workflow
 - **Open** a PDF with the folder icon, then **Save** to download the annotated copy. Any existing PDF text comments are imported as pins you can continue.
 - Use the person icon to set your **name and signature**; both values persist between sessions.
