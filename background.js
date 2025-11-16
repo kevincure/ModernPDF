@@ -140,6 +140,9 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return;
   if (details.url && isPdfUrl(details.url)) {
     registerPdfForTab(details.tabId, details.url);
+  } else {
+    // Clear cached PDF URL when navigating to a non-PDF page
+    pendingPdfSources.delete(details.tabId);
   }
 });
 
@@ -148,6 +151,9 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   if (details.url && isPdfUrl(details.url)) {
     registerPdfForTab(details.tabId, details.url);
+  } else {
+    // Clear cached PDF URL when navigating to a non-PDF page
+    pendingPdfSources.delete(details.tabId);
   }
 });
 
