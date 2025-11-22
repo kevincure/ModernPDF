@@ -48,59 +48,50 @@
 
     const viewerSrc = buildViewerSrc(sourceUrl);
 
-    // Use requestIdleCallback or setTimeout(0) to let the navigation commit
-    // This ensures:
-    // 1. URL bar updates to show PDF URL
-    // 2. History entry is created for the PDF
-    // 3. Then we replace content before it renders
-    const doInject = () => {
-      document.open();
-      document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body, html {
-              margin: 0;
-              padding: 0;
-              width: 100%;
-              height: 100%;
-              overflow: hidden;
-            }
-            iframe {
-              position: fixed;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              border: none;
-              z-index: 999999;
-            }
-          </style>
-        </head>
-        <body>
-          <iframe id="pdfViewer" src="${viewerSrc}" allow="fullscreen"></iframe>
-        </body>
-        </html>
-      `);
-      document.close();
+    // Don't use document.open() - it breaks navigation and history
+    // Instead, inject iframe as overlay on the existing document
+    // This preserves URL bar and history entry while showing our viewer
 
-      window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-          e.preventDefault();
-          document.getElementById('pdfViewer')
-            ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
-        }
-      }, true);
-    };
-
-    // Wait for next tick to ensure navigation has committed
-    if (typeof requestIdleCallback !== 'undefined') {
-      requestIdleCallback(doInject, { timeout: 50 });
-    } else {
-      setTimeout(doInject, 0);
+    // Hide the original page content
+    if (document.body) {
+      document.body.style.margin = '0';
+      document.body.style.padding = '0';
+      document.body.style.overflow = 'hidden';
+      // Hide all existing content
+      for (const child of document.body.children) {
+        child.style.display = 'none';
+      }
     }
+
+    if (document.documentElement) {
+      document.documentElement.style.margin = '0';
+      document.documentElement.style.padding = '0';
+      document.documentElement.style.overflow = 'hidden';
+    }
+
+    // Create and inject our viewer iframe
+    const iframe = document.createElement('iframe');
+    iframe.id = 'pdfViewer';
+    iframe.src = viewerSrc;
+    iframe.allow = 'fullscreen';
+    iframe.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 2147483647;
+    `;
+
+    (document.body || document.documentElement).appendChild(iframe);
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        iframe.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
+      }
+    }, true);
   }
 
   function evaluateInjectionResponse(response) {
