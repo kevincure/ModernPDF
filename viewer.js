@@ -738,24 +738,29 @@ function goToPageNumber(n){
     async function renderPage(num) {
       const page = await pdfDoc.getPage(num);
       const base = page.getViewport({ scale: 1 });
-      const viewport = page.getViewport({ scale: currentScale });
+      // Create viewport at logical scale for UI calculations
+      const logicalViewport = page.getViewport({ scale: currentScale });
+      // Create viewport at physical (DPR-scaled) resolution for crisp rendering
+      const viewport = page.getViewport({ scale: currentScale * dpr });
       const slot = ensurePageSlot(num);
 
       const wrap = slot.canvas.parentElement;
       if (wrap) {
         wrap.style.setProperty(
           'contain-intrinsic-size',
-          `${Math.ceil(viewport.width)}px ${Math.ceil(viewport.height)}px`
+          `${Math.ceil(logicalViewport.width)}px ${Math.ceil(logicalViewport.height)}px`
         );
       }
       slot.baseW = base.width;
       slot.baseH = base.height;
 
-      slot.canvas.style.width = `${viewport.width}px`;
-      slot.canvas.style.height = `${viewport.height}px`;
+      // CSS size is logical pixels (what user sees)
+      slot.canvas.style.width = `${logicalViewport.width}px`;
+      slot.canvas.style.height = `${logicalViewport.height}px`;
 
-      const rw = Math.floor(viewport.width * dpr);
-      const rh = Math.floor(viewport.height * dpr);
+      // Canvas buffer is physical pixels (for crisp rendering)
+      const rw = Math.floor(viewport.width);
+      const rh = Math.floor(viewport.height);
       if (slot.canvas.width !== rw || slot.canvas.height !== rh) {
         slot.canvas.width = rw;
         slot.canvas.height = rh;
@@ -764,10 +769,10 @@ function goToPageNumber(n){
       slot.layer.style.width = `${base.width}px`;
       slot.layer.style.height = `${base.height}px`;
       slot.layer.style.transform = `scale(${currentScale})`;
-      syncPdfLayerTransform(slot, viewport);
+      syncPdfLayerTransform(slot, logicalViewport);
 
-      slot.textLayer.style.width = `${viewport.width}px`;
-      slot.textLayer.style.height = `${viewport.height}px`;
+      slot.textLayer.style.width = `${logicalViewport.width}px`;
+      slot.textLayer.style.height = `${logicalViewport.height}px`;
       slot.textLayer.style.transform = '';
 
       if (slot.renderTask) {
@@ -775,11 +780,10 @@ function goToPageNumber(n){
           slot.renderTask.cancel();
         } catch (_) {}
       }
-      const t = [dpr, 0, 0, dpr, 0, 0];
+      // No transform needed - viewport is already at correct physical resolution
       const renderParams = {
         canvasContext: slot.ctx,
         viewport,
-        transform: t,
         // Don't render annotation appearances on canvas - we handle them in annotation layer
         annotationMode: pdfjsLib?.AnnotationMode?.DISABLE || 0
       };
@@ -793,7 +797,7 @@ function goToPageNumber(n){
         slot.renderTask = null;
       }
 
-      await renderPdfAnnotations(slot, page, viewport);
+      await renderPdfAnnotations(slot, page, logicalViewport);
     }
 
     // Purpose: Renders the text selection layer for a page
