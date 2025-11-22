@@ -49,14 +49,9 @@
     const viewerSrc = buildViewerSrc(sourceUrl);
     const originalUrl = sourceUrl || location.href;
 
-    // Stop the current page load to prevent it from creating a history entry
-    try {
-      window.stop();
-    } catch (err) {
-      // Ignore errors
-    }
-
-    // Inject immediately (no setTimeout) to prevent duplicate history entries
+    // Inject immediately (no setTimeout, no window.stop)
+    // We want the navigation to complete normally (creating the history entry)
+    // but replace the content before it renders
     document.open();
     document.write(`
       <!DOCTYPE html>
@@ -88,16 +83,6 @@
       </html>
     `);
     document.close();
-
-    // Fix back button: replace history state to prevent duplicate entries
-    // This ensures the URL bar shows the PDF URL, not the viewer URL
-    try {
-      if (history.state !== null || location.href !== originalUrl) {
-        history.replaceState(null, '', originalUrl);
-      }
-    } catch (err) {
-      // Ignore errors (e.g., on file:// URLs)
-    }
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
