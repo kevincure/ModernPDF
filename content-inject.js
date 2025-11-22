@@ -47,50 +47,60 @@
     window.__pdfViewerInjected = true;
 
     const viewerSrc = buildViewerSrc(sourceUrl);
-    const originalUrl = sourceUrl || location.href;
 
-    // Inject immediately (no setTimeout, no window.stop)
-    // We want the navigation to complete normally (creating the history entry)
-    // but replace the content before it renders
-    document.open();
-    document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-          }
-          iframe {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            z-index: 999999;
-          }
-        </style>
-      </head>
-      <body>
-        <iframe id="pdfViewer" src="${viewerSrc}" allow="fullscreen"></iframe>
-      </body>
-      </html>
-    `);
-    document.close();
+    // Use requestIdleCallback or setTimeout(0) to let the navigation commit
+    // This ensures:
+    // 1. URL bar updates to show PDF URL
+    // 2. History entry is created for the PDF
+    // 3. Then we replace content before it renders
+    const doInject = () => {
+      document.open();
+      document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body, html {
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+            }
+            iframe {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              border: none;
+              z-index: 999999;
+            }
+          </style>
+        </head>
+        <body>
+          <iframe id="pdfViewer" src="${viewerSrc}" allow="fullscreen"></iframe>
+        </body>
+        </html>
+      `);
+      document.close();
 
-    window.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        document.getElementById('pdfViewer')
-          ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
-      }
-    }, true);
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+          e.preventDefault();
+          document.getElementById('pdfViewer')
+            ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
+        }
+      }, true);
+    };
+
+    // Wait for next tick to ensure navigation has committed
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(doInject, { timeout: 50 });
+    } else {
+      setTimeout(doInject, 0);
+    }
   }
 
   function evaluateInjectionResponse(response) {
