@@ -42,17 +42,13 @@
     return `${viewerBaseUrl}?src=${encodeURIComponent(target)}`;
   }
 
-  function injectViewer(sourceUrl) {
+function injectViewer(sourceUrl) {
     if (window.__pdfViewerInjected) return;
     window.__pdfViewerInjected = true;
 
     const viewerSrc = buildViewerSrc(sourceUrl);
 
-    // Don't use document.open() - it breaks navigation and history
-    // Instead, inject CSS and iframe overlay on the existing document
-    // This preserves URL bar and history entry while showing our viewer
-
-    // Step 1: Inject CSS immediately to hide body (prevents text mess while loading)
+    // Step 1: Modern CSS with Indeterminate Progress Bar
     const style = document.createElement('style');
     style.id = 'pdfViewerHideStyle';
     style.textContent = `
@@ -67,28 +63,67 @@
       body > *:not(#pdfViewer):not(#pdfViewerLoading) {
         display: none !important;
       }
+      /* Modern Loading Overlay */
       #pdfViewerLoading {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        inset: 0;
         background: #faf8f4;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 2147483646;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        color: #666;
-        font-size: 14px;
+        color: #333;
+        transition: opacity 0.3s ease-out;
       }
-      #pdfViewerLoading::after {
-        content: 'Loading PDF...';
-        animation: pdfPulse 1.5s ease-in-out infinite;
+      .loading-card {
+        background: white;
+        padding: 32px 40px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        text-align: center;
+        width: 300px;
       }
-      @keyframes pdfPulse {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 1; }
+      .loading-icon {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 16px;
+        opacity: 0.8;
+        animation: float 2s ease-in-out infinite;
+      }
+      .loading-text {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #1a1a1a;
+      }
+      /* The Indeterminate Progress Bar */
+      .progress-track {
+        width: 100%;
+        height: 6px;
+        background: #f0f0f0;
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+      .progress-bar {
+        position: absolute;
+        height: 100%;
+        width: 40%;
+        background: #2563eb;
+        border-radius: 3px;
+        animation: indeterminate 1.5s infinite linear;
+        transform-origin: 0% 50%;
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-6px); }
+      }
+      @keyframes indeterminate {
+        0% { transform: translateX(-100%) scaleX(0.2); }
+        50% { transform: translateX(50%) scaleX(0.5); }
+        100% { transform: translateX(200%) scaleX(0.2); }
       }
       #pdfViewer {
         opacity: 0;
@@ -100,9 +135,23 @@
     `;
     (document.head || document.documentElement).appendChild(style);
 
-    // Step 2: Create loading indicator
+    // Step 2: Create the structured loading card
     const loadingDiv = document.createElement('div');
     loadingDiv.id = 'pdfViewerLoading';
+    loadingDiv.innerHTML = `
+      <div class="loading-card">
+        <svg class="loading-icon" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2">
+           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+           <polyline points="14 2 14 8 20 8"></polyline>
+           <line x1="12" y1="18" x2="12" y2="12"></line>
+           <polyline points="9 15 12 12 15 15"></polyline>
+        </svg>
+        <div class="loading-text">Opening Document...</div>
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+      </div>
+    `;
 
     // Step 3: Create viewer iframe overlay
     const iframe = document.createElement('iframe');
@@ -122,10 +171,11 @@
     // Handle iframe load - fade in and remove loading indicator
     iframe.addEventListener('load', () => {
       iframe.classList.add('loaded');
-      // Remove loading indicator after fade-in completes
+      loadingDiv.style.opacity = '0';
+      // Wait for transition to finish before removing from DOM
       setTimeout(() => {
         loadingDiv?.remove();
-      }, 200);
+      }, 350);
     });
 
     // Inject elements when DOM is ready
@@ -138,7 +188,6 @@
     if (document.body) {
       injectElements();
     } else {
-      // Wait for body to exist
       const observer = new MutationObserver(() => {
         if (document.body) {
           observer.disconnect();
@@ -148,9 +197,8 @@
       observer.observe(document.documentElement, { childList: true });
     }
 
-    // Step 4: Clean up on navigation away (fixes back button)
+    // Step 4: Clean up on navigation
     window.addEventListener('pagehide', () => {
-      // Remove our injected elements so back-forward cache doesn't preserve them
       iframe?.remove();
       loadingDiv?.remove();
       style?.remove();

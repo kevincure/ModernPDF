@@ -759,8 +759,8 @@ function goToPageNumber(n){
   slot.canvas.style.height = `${logicalViewport.height}px`;
 
   // Canvas buffer is physical pixels (for crisp rendering)
-  const rw = Math.floor(viewport.width);
-  const rh = Math.floor(viewport.height);
+  const rw = Math.ceil(viewport.width);
+  const rh = Math.ceil(viewport.height);
   if (slot.canvas.width !== rw || slot.canvas.height !== rh) {
     slot.canvas.width = rw;
     slot.canvas.height = rh;
@@ -3188,7 +3188,24 @@ goToPage = function (d) { _origGoToPage(d); syncInfoBoxes(); };
         hideLoadError();
       } catch (err) {
         console.error('Failed to load PDF', err);
+        // If fetching fails (likely auth/cookies/CORS), create a direct download link
+        const fallbackLink = document.createElement('a');
+        fallbackLink.href = sourceUrl;
+        fallbackLink.textContent = "Click here to download original PDF";
+        fallbackLink.download = ""; // Trigger download attribute
+        
+        // Append this link to your error message or replace the banner content
         showLoadError(err?.message || 'Failed to load PDF.', sourceUrl);
+        
+        // Locate the banner we just showed and append the direct link
+        const banner = document.getElementById('loadErrorBanner');
+        if(banner) {
+            const downloadBtn = document.createElement('button');
+            downloadBtn.innerText = "Download / Open Native";
+            downloadBtn.style.marginLeft = "10px";
+            downloadBtn.onclick = () => window.open(sourceUrl, '_blank');
+            banner.appendChild(downloadBtn);
+        }
       }
     })();
 
