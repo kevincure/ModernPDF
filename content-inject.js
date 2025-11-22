@@ -49,27 +49,27 @@
     const viewerSrc = buildViewerSrc(sourceUrl);
 
     // Don't use document.open() - it breaks navigation and history
-    // Instead, inject iframe as overlay on the existing document
+    // Instead, inject CSS and iframe overlay on the existing document
     // This preserves URL bar and history entry while showing our viewer
 
-    // Hide the original page content
-    if (document.body) {
-      document.body.style.margin = '0';
-      document.body.style.padding = '0';
-      document.body.style.overflow = 'hidden';
-      // Hide all existing content
-      for (const child of document.body.children) {
-        child.style.display = 'none';
+    // Step 1: Inject CSS immediately to hide body (prevents text mess while loading)
+    const style = document.createElement('style');
+    style.id = 'pdfViewerHideStyle';
+    style.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        width: 100% !important;
+        height: 100% !important;
       }
-    }
+      body > *:not(#pdfViewer) {
+        display: none !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
 
-    if (document.documentElement) {
-      document.documentElement.style.margin = '0';
-      document.documentElement.style.padding = '0';
-      document.documentElement.style.overflow = 'hidden';
-    }
-
-    // Create and inject our viewer iframe
+    // Step 2: Create viewer iframe overlay
     const iframe = document.createElement('iframe');
     iframe.id = 'pdfViewer';
     iframe.src = viewerSrc;
@@ -84,7 +84,30 @@
       z-index: 2147483647;
     `;
 
-    (document.body || document.documentElement).appendChild(iframe);
+    // Inject iframe when DOM is ready
+    const injectIframe = () => {
+      (document.body || document.documentElement).appendChild(iframe);
+    };
+
+    if (document.body) {
+      injectIframe();
+    } else {
+      // Wait for body to exist
+      const observer = new MutationObserver(() => {
+        if (document.body) {
+          observer.disconnect();
+          injectIframe();
+        }
+      });
+      observer.observe(document.documentElement, { childList: true });
+    }
+
+    // Step 3: Clean up on navigation away (fixes back button)
+    window.addEventListener('pagehide', () => {
+      // Remove our injected elements so back-forward cache doesn't preserve them
+      iframe?.remove();
+      style?.remove();
+    }, { once: true });
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
