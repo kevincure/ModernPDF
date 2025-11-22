@@ -62,14 +62,49 @@
         overflow: hidden !important;
         width: 100% !important;
         height: 100% !important;
+        background: #faf8f4 !important;
       }
-      body > *:not(#pdfViewer) {
+      body > *:not(#pdfViewer):not(#pdfViewerLoading) {
         display: none !important;
+      }
+      #pdfViewerLoading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #faf8f4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2147483646;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #666;
+        font-size: 14px;
+      }
+      #pdfViewerLoading::after {
+        content: 'Loading PDF...';
+        animation: pdfPulse 1.5s ease-in-out infinite;
+      }
+      @keyframes pdfPulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+      #pdfViewer {
+        opacity: 0;
+        transition: opacity 0.2s ease-in;
+      }
+      #pdfViewer.loaded {
+        opacity: 1;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
 
-    // Step 2: Create viewer iframe overlay
+    // Step 2: Create loading indicator
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'pdfViewerLoading';
+
+    // Step 3: Create viewer iframe overlay
     const iframe = document.createElement('iframe');
     iframe.id = 'pdfViewer';
     iframe.src = viewerSrc;
@@ -84,28 +119,40 @@
       z-index: 2147483647;
     `;
 
-    // Inject iframe when DOM is ready
-    const injectIframe = () => {
-      (document.body || document.documentElement).appendChild(iframe);
+    // Handle iframe load - fade in and remove loading indicator
+    iframe.addEventListener('load', () => {
+      iframe.classList.add('loaded');
+      // Remove loading indicator after fade-in completes
+      setTimeout(() => {
+        loadingDiv?.remove();
+      }, 200);
+    });
+
+    // Inject elements when DOM is ready
+    const injectElements = () => {
+      const container = document.body || document.documentElement;
+      container.appendChild(loadingDiv);
+      container.appendChild(iframe);
     };
 
     if (document.body) {
-      injectIframe();
+      injectElements();
     } else {
       // Wait for body to exist
       const observer = new MutationObserver(() => {
         if (document.body) {
           observer.disconnect();
-          injectIframe();
+          injectElements();
         }
       });
       observer.observe(document.documentElement, { childList: true });
     }
 
-    // Step 3: Clean up on navigation away (fixes back button)
+    // Step 4: Clean up on navigation away (fixes back button)
     window.addEventListener('pagehide', () => {
       // Remove our injected elements so back-forward cache doesn't preserve them
       iframe?.remove();
+      loadingDiv?.remove();
       style?.remove();
     }, { once: true });
 
