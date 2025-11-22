@@ -7,6 +7,17 @@ const PDF_CONTENT_TYPES = new Set([
   'application/vnd.pdf',
   'text/pdf'
 ]);
+
+// Domains that use wrapper pages to deliver PDFs - wait for actual headers
+const PDF_WRAPPER_DOMAINS = new Set([
+  'papers.ssrn.com',
+  'ssrn.com',
+  'www.ssrn.com',
+  'jstor.org',
+  'www.jstor.org'
+  // Add more as discovered
+]);
+
 const pendingPdfSources = new Map();
 let extensionEnabled = true;
 
@@ -20,6 +31,16 @@ function isPdfUrl(url) {
     return PDF_URL_REGEX.test(parsed.pathname + parsed.search + parsed.hash);
   } catch (err) {
     return PDF_URL_REGEX.test(url);
+  }
+}
+
+function isWrapperDomain(url) {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return PDF_WRAPPER_DOMAINS.has(hostname);
+  } catch {
+    return false;
   }
 }
 
@@ -95,6 +116,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 function registerPdfForTab(tabId, url) {
   if (!tabId || tabId === chrome.tabs.TAB_ID_NONE) return;
   if (!url) return;
+
+  // Don't trust URL heuristics for wrapper domains - wait for header confirmation
+  if (isWrapperDomain(url)) {
+    return;
+  }
+
   cachePdfSource(tabId, url);
   try {
     chrome.tabs.sendMessage(tabId, { action: 'pdfDetected', url }, () => {
@@ -124,7 +151,19 @@ if (chrome.webRequest?.onHeadersReceived) {
         if (!extensionEnabled) return;
         if (details.frameId !== 0) return;
         if (!isPdfResponse(details)) return;
-        registerPdfForTab(details.tabId, details.url);
+
+        // For confirmed PDF responses (via headers), ALWAYS register
+        // This includes wrapper domains that deliver actual PDFs
+        cachePdfSource(details.tabId, details.url);
+        try {
+          chrome.tabs.sendMessage(
+            details.tabId,
+            { action: 'pdfDetected', url: details.url },
+            () => void chrome.runtime.lastError
+          );
+        } catch (err) {
+          // Ignore messaging errors
+        }
       },
       { urls: ['<all_urls>'], types: ['main_frame'] },
       ['responseHeaders']
