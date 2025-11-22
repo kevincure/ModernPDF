@@ -49,54 +49,63 @@
     const viewerSrc = buildViewerSrc(sourceUrl);
     const originalUrl = sourceUrl || location.href;
 
-    setTimeout(() => {
-      document.open();
-      document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body, html {
-              margin: 0;
-              padding: 0;
-              width: 100%;
-              height: 100%;
-              overflow: hidden;
-            }
-            iframe {
-              position: fixed;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              border: none;
-              z-index: 999999;
-            }
-          </style>
-        </head>
-        <body>
-          <iframe id="pdfViewer" src="${viewerSrc}" allow="fullscreen"></iframe>
-        </body>
-        </html>
-      `);
-      document.close();
+    // Stop the current page load to prevent it from creating a history entry
+    try {
+      window.stop();
+    } catch (err) {
+      // Ignore errors
+    }
 
-      // Fix back button: replace history state to prevent duplicate entries
-      try {
+    // Inject immediately (no setTimeout) to prevent duplicate history entries
+    document.open();
+    document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+          }
+          iframe {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            z-index: 999999;
+          }
+        </style>
+      </head>
+      <body>
+        <iframe id="pdfViewer" src="${viewerSrc}" allow="fullscreen"></iframe>
+      </body>
+      </html>
+    `);
+    document.close();
+
+    // Fix back button: replace history state to prevent duplicate entries
+    // This ensures the URL bar shows the PDF URL, not the viewer URL
+    try {
+      if (history.state !== null || location.href !== originalUrl) {
         history.replaceState(null, '', originalUrl);
-      } catch (err) {
-        // Ignore errors (e.g., on file:// URLs)
       }
+    } catch (err) {
+      // Ignore errors (e.g., on file:// URLs)
+    }
 
-      window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-          e.preventDefault();
-          document.getElementById('pdfViewer')
-            ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
-        }
-      }, true);
-    }, 10);
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        document.getElementById('pdfViewer')
+          ?.contentWindow?.postMessage({ type: 'PDF_VIEWER_PRINT' }, '*');
+      }
+    }, true);
   }
 
   function evaluateInjectionResponse(response) {
